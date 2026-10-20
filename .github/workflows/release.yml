@@ -57,9 +57,7 @@ jobs:
 
       - name: Package
         shell: pwsh
-        run: |
-          ./scripts/package.ps1 -Mode release -OutDir artifacts
-          ./scripts/publish-registry.ps1 -DryRun -OutDir artifacts
+        run: ./scripts/package.ps1 -Mode release -OutDir artifacts
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
@@ -68,3 +66,4 @@ jobs:
             artifacts/*.zip
             artifacts/*.sha256
           generate_release_notes: true
+          fail_on_unmatched_files: true

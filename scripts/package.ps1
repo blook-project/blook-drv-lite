@@ -2,9 +2,10 @@
 #
 #   ./scripts/package.ps1 -Mode release -OutDir artifacts
 #
-# The package contains the driver image, the CLI, the SDK headers, the
-# signing/build scripts and the docs needed to consume the project. Nothing
-# from build/ other than the listed artifacts is included.
+# Asset contract (see blook-xmake-repo docs/RELEASE.md):
+#   blook-drv-lite-<version>-windows-x64.zip
+#   blook-drv-lite-<version>-windows-x64.zip.sha256
+# Layout: include/ lib/x64/ bin/ scripts/ docs/ + top-level docs.
 [CmdletBinding()]
 param(
     [ValidateSet("dev", "release")]
@@ -23,37 +24,44 @@ $Out = if ([IO.Path]::IsPathRooted($OutDir)) { $OutDir } else { Join-Path $RepoR
 New-Item -ItemType Directory -Force $Out | Out-Null
 $stage = Join-Path $Out "stage"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
-New-Item -ItemType Directory -Force $stage | Out-Null
+$stageBin = Join-Path $stage "bin\x64"
+$stageLib = Join-Path $stage "lib\x64"
+New-Item -ItemType Directory -Force $stageBin, $stageLib | Out-Null
 
 $required = @("drvlite.sys", "drvlite-cli.exe")
 foreach ($name in $required) {
     $path = Join-Path $BinDir $name
     if (-not (Test-Path $path)) { throw "missing build artifact: $path" }
-    Copy-Item $path $stage
+    Copy-Item $path $stageBin
 }
 foreach ($optional in @("drvlite-target.exe", "drvlite-unsigned.sys")) {
     $path = Join-Path $BinDir $optional
-    if (Test-Path $path) { Copy-Item $path $stage }
+    if (Test-Path $path) { Copy-Item $path $stageBin }
 }
-foreach ($item in @("include", "scripts", "signer", "docs")) {
+$sdkLib = Join-Path $BinDir "drvlite-sdk.lib"
+if (Test-Path $sdkLib) {
+    Copy-Item $sdkLib $stageLib
+} elseif ($Mode -eq "release") {
+    throw "missing SDK library: $sdkLib"
+}
+foreach ($item in @("include", "scripts", "docs")) {
     $source = Join-Path $RepoRoot $item
     if (Test-Path $source) {
         Copy-Item $source (Join-Path $stage $item) -Recurse
     }
 }
-foreach ($file in @("README.md", "LICENSE", "CHANGELOG.md", "version.txt",
-        "xmake.lua", ".clang-format")) {
+$share = Join-Path $stage "share"
+New-Item -ItemType Directory -Force $share | Out-Null
+$xmakePackage = Join-Path $RepoRoot "xmake-package"
+if (Test-Path $xmakePackage) {
+    Copy-Item $xmakePackage (Join-Path $share "xmake-package") -Recurse
+}
+foreach ($file in @("README.md", "LICENSE", "CHANGELOG.md", "version.txt")) {
     $source = Join-Path $RepoRoot $file
     if (Test-Path $source) { Copy-Item $source $stage }
 }
-# The xmake package definition is part of the archive so the registry script
-# and downstream users get the same manifest.
-$xmakePackage = Join-Path $RepoRoot "xmake-package"
-if (Test-Path $xmakePackage) {
-    Copy-Item $xmakePackage (Join-Path $stage "xmake-package") -Recurse
-}
 
-$zipName = "blook-drv-lite-$Version.zip"
+$zipName = "blook-drv-lite-$Version-windows-x64.zip"
 $zipPath = Join-Path $Out $zipName
 if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
 Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zipPath -CompressionLevel Optimal
