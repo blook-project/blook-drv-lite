@@ -10,7 +10,7 @@
 param(
     [string]$Path = (Join-Path (Split-Path -Parent $PSScriptRoot) "..\blook-kchannel"),
     [string]$Repo = "https://github.com/blook-project/blook-kchannel",
-    [string]$Commit = "8c2a056065993e0eae85c5b6d11cd0c8472c671e"
+    [string]$Commit = "40a5337a2d69c79fb049361f616aacc58ae75d4d"
 )
 $ErrorActionPreference = "Stop"
 $Path = [IO.Path]::GetFullPath($Path)

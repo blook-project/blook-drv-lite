@@ -11,7 +11,7 @@ permissions:
 env:
   XMAKE_VERSION: "3.0.8"
   KCHANNEL_REPO: https://github.com/blook-project/blook-kchannel
-  KCHANNEL_COMMIT: 8c2a056065993e0eae85c5b6d11cd0c8472c671e
+  KCHANNEL_COMMIT: 40a5337a2d69c79fb049361f616aacc58ae75d4d
 
 jobs:
   release:
@@ -41,6 +41,15 @@ jobs:
           git clone --quiet $env:KCHANNEL_REPO $root
           git -C $root checkout --quiet $env:KCHANNEL_COMMIT
           "KCHANNEL_DIR=$root" >> $env:GITHUB_ENV
+      - name: Assert real kchannel sources present
+        shell: pwsh
+        run: |
+          foreach ($required in @('include\blook\kchannel.h', 'include\blook\kchannel_km.h',
+              'src\user\kc_user.cpp', 'src\kernel\kc_kernel.cpp', 'src\common\kc_crypto.cpp')) {
+            $path = Join-Path $env:KCHANNEL_DIR $required
+            if (-not (Test-Path $path)) { throw "kchannel pin is incomplete: missing $required" }
+          }
+          Write-Host "kchannel sources present: real integration (no stub)"
 
       - name: Build
         shell: pwsh

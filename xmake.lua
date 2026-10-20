@@ -84,6 +84,7 @@ else
 end
 
 local kc_include = kchannel_ok and path.join(kchannel_dir, "include") or ""
+local kc_src_include = kchannel_ok and path.join(kchannel_dir, "src") or ""
 local kc_user_src = kchannel_ok and path.join(kchannel_dir, "src", "user") or ""
 local kc_kernel_src = kchannel_ok and path.join(kchannel_dir, "src", "kernel") or ""
 local kc_common_src = kchannel_ok and path.join(kchannel_dir, "src", "common") or ""
@@ -106,66 +107,58 @@ local common_includedirs = { "include", "src", "src/core" }
 -- ---------------------------------------------------------------------------
 -- Kernel driver (manual-map loadable)
 -- ---------------------------------------------------------------------------
-target("drvlite")
-    add_rules("wdk.driver", "wdk.env.wdm", "blook.masm")
-    set_values("wdk.env.winver", "win10_vb")
-    set_languages("cxx17")
-    set_exceptions("no-cxx")
-    add_defines("NOMINMAX", "POOL_NX_OPTIN=1", "DRVLITE_VERSION=\"" .. version .. "\"")
-    add_includedirs(common_includedirs)
-    if kchannel_ok then
+if kchannel_ok and kc_has_kernel then
+    target("drvlite")
+        add_rules("wdk.driver", "wdk.env.wdm", "blook.masm")
+        set_values("wdk.env.winver", "win10_vb")
+        set_languages("cxx17")
+        set_exceptions("no-cxx")
+        add_defines("NOMINMAX", "POOL_NX_OPTIN=1", "DRVLITE_VERSION=\"" .. version .. "\"")
+        add_includedirs(common_includedirs)
         add_includedirs(kc_include)
-    end
-    add_files("src/driver/*.cpp", "src/driver/**/*.cpp", core_files)
-    add_files("src/driver/**/*.asm")
-    if kc_has_kernel then
+        add_includedirs(kc_src_include)
+        add_files("src/driver/*.cpp", "src/driver/*/*.cpp", core_files)
+        add_files("src/driver/*/*.asm")
         add_files(path.join(kc_kernel_src, "*.cpp"))
         add_files(path.join(kc_common_src, "*.cpp"))
-    else
-        add_defines("DRVLITE_KC_STUB=1")
-        add_files("src/driver/ipc/kc_stub.cpp")
-    end
-    add_cxxflags("/kernel", "/W4", "/GR-", "/EHs-c-", "/Zc:threadSafeInit-",
-        "/GS-", "/utf-8", {force = true})
-    add_syslinks("ntoskrnl", "hal", "wdmsec")
-    add_ldflags("/INTEGRITYCHECK", "/ENTRY:DriverEntry", {force = true})
-    set_encodings("utf8")
+        add_cxxflags("/kernel", "/W4", "/GR-", "/EHs-c-", "/Zc:threadSafeInit-",
+            "/GS-", "/utf-8", {force = true})
+        add_syslinks("ntoskrnl", "hal", "wdmsec")
+        add_ldflags("/INTEGRITYCHECK", "/ENTRY:DriverEntry", {force = true})
+        set_encodings("utf8")
+else
+    print("blook-drv-lite: driver target skipped (need --kchannel_dir with "
+        .. "src/kernel and src/common)")
+end
 
 -- ---------------------------------------------------------------------------
 -- User-mode SDK
 -- ---------------------------------------------------------------------------
-target("drvlite-sdk")
-    set_kind("static")
-    set_languages("cxx20")
-    add_defines("NOMINMAX", "UNICODE", "_UNICODE", "DRVLITE_VERSION=\"" .. version .. "\"")
-    add_includedirs(common_includedirs)
-    if kchannel_ok then
+if os.isdir("src/sdk") and os.isdir("src/cli") and kchannel_ok and kc_has_user then
+    target("drvlite-sdk")
+        set_kind("static")
+        set_languages("cxx20")
+        add_defines("NOMINMAX", "UNICODE", "_UNICODE", "DRVLITE_VERSION=\"" .. version .. "\"")
+        add_includedirs(common_includedirs)
         add_includedirs(kc_include)
-    end
-    add_files("src/sdk/*.cpp", core_files)
-    if kc_has_user then
+        add_includedirs(kc_src_include)
+        add_files("src/sdk/*.cpp", core_files)
         add_files(path.join(kc_user_src, "*.cpp"))
         add_files(path.join(kc_common_src, "*.cpp"))
-    else
-        add_defines("DRVLITE_KC_STUB=1")
-        add_files("src/sdk/kc_stub.cpp")
-    end
-    add_cxxflags("/utf-8", "/permissive-", "/W4", {tools = "cl"})
-    add_syslinks("advapi32", "bcrypt")
-    set_encodings("utf8")
+        add_cxxflags("/utf-8", "/permissive-", "/W4", {tools = "cl"})
+        add_syslinks("advapi32", "bcrypt")
+        set_encodings("utf8")
 
--- ---------------------------------------------------------------------------
--- CLI
--- ---------------------------------------------------------------------------
-target("drvlite-cli")
-    set_kind("binary")
-    set_languages("cxx20")
-    add_defines("NOMINMAX", "UNICODE", "_UNICODE")
-    add_includedirs({ "include", "src" })
-    add_files("src/cli/*.cpp")
-    add_deps("drvlite-sdk")
-    add_cxxflags("/utf-8", "/permissive-", "/W4", {tools = "cl"})
-    set_encodings("utf8")
+    target("drvlite-cli")
+        set_kind("binary")
+        set_languages("cxx20")
+        add_defines("NOMINMAX", "UNICODE", "_UNICODE")
+        add_includedirs({ "include", "src", kc_include })
+        add_files("src/cli/*.cpp")
+        add_deps("drvlite-sdk")
+        add_cxxflags("/utf-8", "/permissive-", "/W4", {tools = "cl"})
+        set_encodings("utf8")
+end
 
 -- ---------------------------------------------------------------------------
 -- Host unit tests (no kernel, no VM)
@@ -184,23 +177,27 @@ target("drvlite-tests")
 -- ---------------------------------------------------------------------------
 -- Guest artefacts for the e2e suite
 -- ---------------------------------------------------------------------------
-target("drvlite-target")
-    set_kind("binary")
-    set_languages("cxx20")
-    add_defines("NOMINMAX", "UNICODE", "_UNICODE")
-    add_includedirs({ "include", "src" })
-    add_files("tests/guest/target/*.cpp")
-    add_cxxflags("/utf-8", "/permissive-", "/W4", {tools = "cl"})
-    set_encodings("utf8")
+if os.isdir("tests/guest/target") then
+    target("drvlite-target")
+        set_kind("binary")
+        set_languages("cxx20")
+        add_defines("NOMINMAX", "UNICODE", "_UNICODE")
+        add_includedirs({ "include", "src", kc_include })
+        add_files("tests/guest/target/*.cpp")
+        add_cxxflags("/utf-8", "/permissive-", "/W4", {tools = "cl"})
+        set_encodings("utf8")
+end
 
-target("drvlite-unsigned")
-    add_rules("wdk.driver", "wdk.env.wdm")
-    set_values("wdk.env.winver", "win10_vb")
-    set_languages("cxx17")
-    set_exceptions("no-cxx")
-    add_defines("NOMINMAX", "POOL_NX_OPTIN=1")
-    add_files("tests/guest/unsigned/*.cpp")
-    add_cxxflags("/kernel", "/W4", "/GR-", "/EHs-c-", "/utf-8", {force = true})
-    add_syslinks("ntoskrnl", "hal", "wdmsec")
-    add_ldflags("/ENTRY:DriverEntry", {force = true})
-    set_encodings("utf8")
+if os.isdir("tests/guest/unsigned") then
+    target("drvlite-unsigned")
+        add_rules("wdk.driver", "wdk.env.wdm")
+        set_values("wdk.env.winver", "win10_vb")
+        set_languages("cxx17")
+        set_exceptions("no-cxx")
+        add_defines("NOMINMAX", "POOL_NX_OPTIN=1")
+        add_files("tests/guest/unsigned/*.cpp")
+        add_cxxflags("/kernel", "/W4", "/GR-", "/EHs-c-", "/utf-8", {force = true})
+        add_syslinks("ntoskrnl", "hal", "wdmsec")
+        add_ldflags("/ENTRY:DriverEntry", {force = true})
+        set_encodings("utf8")
+end

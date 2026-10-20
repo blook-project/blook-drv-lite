@@ -16,11 +16,15 @@
 /*
  * Fixed width types.
  *
- * Kernel translation units include <ntddk.h> and <blook/kchannel_km.h> before
- * this header (kchannel defines the standard names under _KERNEL_MODE). User
- * translation units get them from the CRT.
+ * The header is self-sufficient: the kernel build compiles the portable core
+ * translation units with /kernel without necessarily including the WDK headers
+ * first. kchannel_km.h is the authoritative kernel definition of the standard
+ * fixed width names; user mode (and the host tests) use the CRT.
  */
-#if !defined(_KERNEL_MODE)
+#if defined(_KERNEL_MODE)
+#include <ntddk.h>
+#include <blook/kchannel_km.h>
+#else
 #include <stdint.h>
 #endif
 
