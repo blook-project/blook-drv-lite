@@ -1,0 +1,94 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  XMAKE_VERSION: "3.0.8"
+  KCHANNEL_REPO: https://github.com/blook-project/blook-kchannel
+  # Pinned blook-kchannel ABI (headers are authoritative; sources are
+  # compiled in when the checkout provides them).
+  KCHANNEL_COMMIT: 8c2a056065993e0eae85c5b6d11cd0c8472c671e
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check version.txt matches xmake.lua
+        shell: pwsh
+        run: |
+          $version = (Get-Content version.txt -Raw).Trim()
+          $lua = Get-Content xmake.lua -Raw
+          if ($lua -notmatch [regex]::Escape('local version = "' + $version + '"')) {
+            throw "version.txt ($version) and xmake.lua are out of sync"
+          }
+          Write-Host "version $version"
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: ${{ env.XMAKE_VERSION }}
+
+      # Proven recipe: windows-latest has no WDK; the NuGet content package
+      # unpacks the same layout as the official Build Tools installer.
+      - name: Install WDK from NuGet content
+        shell: pwsh
+        run: |
+          $ver = '10.0.26100.6584'
+          New-Item -ItemType Directory -Force $env:RUNNER_TEMP\wdk | Out-Null
+          Invoke-WebRequest "https://api.nuget.org/v3-flatcontainer/microsoft.windows.wdk.x64/$ver/microsoft.windows.wdk.x64.$ver.nupkg" -OutFile $env:RUNNER_TEMP\wdk\wdk.nupkg
+          tar.exe -xf $env:RUNNER_TEMP\wdk\wdk.nupkg -C $env:RUNNER_TEMP\wdk
+          "WDK_ROOT=$env:RUNNER_TEMP\wdk\c" >> $env:GITHUB_ENV
+
+      - name: Fetch blook-kchannel
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:GITHUB_WORKSPACE '..\blook-kchannel'
+          git clone --quiet $env:KCHANNEL_REPO $root
+          git -C $root checkout --quiet $env:KCHANNEL_COMMIT
+          git -C $root rev-parse HEAD
+          "KCHANNEL_DIR=$root" >> $env:GITHUB_ENV
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          xmake f -y -m release --kchannel_dir="$env:KCHANNEL_DIR" --wdk="$env:WDK_ROOT"
+          if ($LASTEXITCODE -ne 0) { throw "xmake configure failed" }
+
+      - name: Build
+        shell: pwsh
+        run: |
+          xmake -y -v
+          if ($LASTEXITCODE -ne 0) { throw "xmake build failed" }
+
+      - name: Host unit tests
+        shell: pwsh
+        run: |
+          xmake run drvlite-tests
+          if ($LASTEXITCODE -ne 0) { throw "host unit tests failed" }
+
+      - name: clang-format check
+        shell: pwsh
+        run: |
+          python -m pip install --quiet clang-format==20.1.0
+          $files = Get-ChildItem src,include,tests -Recurse -File -Include *.cpp,*.h |
+            ForEach-Object { $_.FullName }
+          clang-format --dry-run --Werror $files
+          if ($LASTEXITCODE -ne 0) { throw "format check failed" }
+
+      - name: Package
+        shell: pwsh
+        run: ./scripts/package.ps1 -Mode release -OutDir artifacts
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: blook-drv-lite-${{ github.sha }}
+          path: artifacts/*
+          if-no-files-found: error

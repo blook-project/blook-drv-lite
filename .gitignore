@@ -1,0 +1,31 @@
+# xmake / build outputs
+/build/
+/.xmake/
+/.cache/
+/.deps/
+*.user
+
+# build artifacts
+*.sys
+*.pdb
+*.ilk
+*.obj
+*.lib
+*.exp
+*.log
+/signer/spcsign/*.pdb
+
+# local VM / e2e scratch
+/artifacts/
+/minidumps/
+/docs/evidence/**/raw/
+!docs/evidence/**/*.json
+!docs/evidence/**/*.md
+!docs/evidence/**/*.txt
+!docs/evidence/**/*.png
+
+# editor / OS
+.vs/
+.vscode/
+.DS_Store
+Thumbs.db

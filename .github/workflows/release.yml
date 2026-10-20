@@ -1,0 +1,70 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  XMAKE_VERSION: "3.0.8"
+  KCHANNEL_REPO: https://github.com/blook-project/blook-kchannel
+  KCHANNEL_COMMIT: 8c2a056065993e0eae85c5b6d11cd0c8472c671e
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: ${{ env.XMAKE_VERSION }}
+
+      - name: Install WDK from NuGet content
+        shell: pwsh
+        run: |
+          $ver = '10.0.26100.6584'
+          New-Item -ItemType Directory -Force $env:RUNNER_TEMP\wdk | Out-Null
+          Invoke-WebRequest "https://api.nuget.org/v3-flatcontainer/microsoft.windows.wdk.x64/$ver/microsoft.windows.wdk.x64.$ver.nupkg" -OutFile $env:RUNNER_TEMP\wdk\wdk.nupkg
+          tar.exe -xf $env:RUNNER_TEMP\wdk\wdk.nupkg -C $env:RUNNER_TEMP\wdk
+          "WDK_ROOT=$env:RUNNER_TEMP\wdk\c" >> $env:GITHUB_ENV
+
+      - name: Fetch blook-kchannel
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:GITHUB_WORKSPACE '..\blook-kchannel'
+          git clone --quiet $env:KCHANNEL_REPO $root
+          git -C $root checkout --quiet $env:KCHANNEL_COMMIT
+          "KCHANNEL_DIR=$root" >> $env:GITHUB_ENV
+
+      - name: Build
+        shell: pwsh
+        run: |
+          xmake f -y -m release --kchannel_dir="$env:KCHANNEL_DIR" --wdk="$env:WDK_ROOT"
+          xmake -y
+          if ($LASTEXITCODE -ne 0) { throw "build failed" }
+
+      - name: Host unit tests
+        shell: pwsh
+        run: |
+          xmake run drvlite-tests
+          if ($LASTEXITCODE -ne 0) { throw "tests failed" }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          ./scripts/package.ps1 -Mode release -OutDir artifacts
+          ./scripts/publish-registry.ps1 -DryRun -OutDir artifacts
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/*.zip
+            artifacts/*.sha256
+          generate_release_notes: true
