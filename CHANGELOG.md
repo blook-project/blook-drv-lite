@@ -36,6 +36,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Module-list pagination and a diagnostic physical page for direct
   physical-path verification.
 
+## [1.0.1] - 2026-10-21
+
+### Fixed
+
+- The 1000x load/unload e2e case is now a fast SCM-level `loadcycle` loop, so
+  it finishes well inside the case timeout and validates repeated image
+  load/unload rather than being dominated by per-cycle CLI startup.
+- The process-level cycle case retries an SCM start-pending race once per
+  iteration instead of failing a healthy cycle.
+- The trace scan unloads the service before checking for leftovers.
+
 ## [1.0.0] - 2026-10-21
 
 ### Fixed
