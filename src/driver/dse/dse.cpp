@@ -8,6 +8,20 @@
 namespace drvlite {
 namespace {
 
+constexpr u32 kValidatePatchLength = 3;
+
+ULONG_PTR flush_icache_callback(ULONG_PTR context) {
+    UNREFERENCED_PARAMETER(context);
+    __wbinvd();
+    int registers[4] = {};
+    __cpuid(registers, 0);
+    return 0;
+}
+
+void flush_instruction_caches() {
+    KeIpiGenericCall(&flush_icache_callback, 0);
+}
+
 core::dse_resolution resolve_from_module(const char* module_name, u64* base,
                                          u32* size, u8** image_buffer) {
     core::dse_resolution result;
@@ -48,6 +62,7 @@ bool dse_initialize() {
     core::dse_resolution resolved =
         resolve_from_module("ci.dll", &ci_base, &ci_size, &image);
     u32 via = resolved.via;
+    bool used_legacy = false;
     if (resolved.code != core::dse_code::ok) {
         /* Windows 7 era kernels have g_CiEnabled in ntoskrnl. Supported
          * builds (Win10/11) fail here and report unsupported. */
@@ -68,6 +83,22 @@ bool dse_initialize() {
                 ci_base = nt_base;
                 ci_size = nt_size;
                 via = legacy.via;
+                used_legacy = true;
+            }
+        }
+    }
+    /* Locate CiValidateImageHeader while the ci.dll image is still in pool:
+     * patching it to return success makes the DSE disable functional even when
+     * the g_CiOptions write alone is not honoured by the loader. */
+    u64 validate_address = 0;
+    if (!used_legacy && image != nullptr && ci_base != 0 && ci_size != 0) {
+        core::pe_image parsed{};
+        if (core::pe_parse(image, ci_size, ci_base, &parsed) ==
+            core::pe_code::ok) {
+            const u32 rva =
+                core::pe_find_export_rva(parsed, "CiValidateImageHeader");
+            if (rva != 0) {
+                validate_address = ci_base + rva;
             }
         }
     }
@@ -88,6 +119,13 @@ bool dse_initialize() {
     dse.original_value = read_options_value(dse.address);
     dse.current_value = dse.original_value;
     dse.patched = false;
+    if (validate_address != 0) {
+        u8 code[sizeof(dse.original_code)] = {};
+        if (read_kernel(validate_address, code, sizeof(code))) {
+            dse.validate_address = validate_address;
+            RtlCopyMemory(dse.original_code, code, sizeof(code));
+        }
+    }
     return true;
 }
 
@@ -109,7 +147,7 @@ void dse_fill_status(drvlite_dse_rsp* response) {
     response->address = dse.address;
     response->ci_base = dse.ci_base;
     response->ci_size = dse.ci_size;
-    response->reserved = dse.via;
+    response->reserved = dse.via | (dse.code_patched != 0 ? 2u : 0u);
 }
 
 bool dse_set(u32 value) {
@@ -124,7 +162,24 @@ bool dse_set(u32 value) {
     const u32 observed = read_options_value(dse.address);
     dse.current_value = observed;
     dse.patched = observed != dse.original_value;
-    return observed == value;
+    if (observed != value) {
+        return false;
+    }
+    /* Functional disable: make CiValidateImageHeader return success. */
+    if (value == 0 && dse.validate_address != 0 && dse.code_patched == 0) {
+        const u8 patch[kValidatePatchLength] = {0x33, 0xC0, 0xC3};
+        if (!write_kernel(dse.validate_address, patch, sizeof(patch))) {
+            return false;
+        }
+        u8 verify[kValidatePatchLength] = {};
+        if (!read_kernel(dse.validate_address, verify, sizeof(verify)) ||
+            RtlCompareMemory(verify, patch, sizeof(patch)) != sizeof(patch)) {
+            return false;
+        }
+        flush_instruction_caches();
+        dse.code_patched = 1;
+    }
+    return true;
 }
 
 bool dse_restore() {
@@ -132,7 +187,27 @@ bool dse_restore() {
     if (!dse.supported) {
         return true;
     }
-    const bool ok = dse_set(dse.original_value);
+    bool ok = true;
+    if (dse.code_patched != 0 && dse.validate_address != 0) {
+        if (write_kernel(dse.validate_address, dse.original_code,
+                         kValidatePatchLength)) {
+            u8 verify[kValidatePatchLength] = {};
+            if (read_kernel(dse.validate_address, verify, sizeof(verify)) &&
+                RtlCompareMemory(verify, dse.original_code,
+                                 kValidatePatchLength) ==
+                    kValidatePatchLength) {
+                dse.code_patched = 0;
+            } else {
+                ok = false;
+            }
+        } else {
+            ok = false;
+        }
+        flush_instruction_caches();
+    }
+    if (!dse_set(dse.original_value)) {
+        ok = false;
+    }
     if (ok) {
         dse.patched = false;
     }

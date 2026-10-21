@@ -23,6 +23,12 @@ struct dse_state {
     u32 reference_rva = 0;
     u32 via = 0;
     u32 error = 0;
+    /* Code-patch fallback: CiValidateImageHeader is patched to return success
+     * so DSE disable is functional on builds where g_CiOptions alone is not
+     * sufficient (verified by loading an unsigned driver). */
+    u64 validate_address = 0;
+    u8 original_code[8] = {};
+    u32 code_patched = 0;
 };
 
 struct infinity_state {
