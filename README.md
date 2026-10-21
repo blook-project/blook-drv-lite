@@ -62,6 +62,7 @@ Documentation:
 [compatibility matrix](docs/compat.md) ·
 [SDK guide](docs/sdk.md) ·
 [CLI + JSON schema](docs/cli.md) ·
+[CI kernel-load recipe](docs/ci-kernel-load.md) ·
 [safety and limits](docs/safety.md) ·
 [performance](docs/performance.md) ·
 [VM e2e](docs/e2e.md)
