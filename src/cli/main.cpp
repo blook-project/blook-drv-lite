@@ -1374,6 +1374,7 @@ int main(int argc, char** argv) {
     const char* mapper = nullptr;
     const char* bootstrap_path = nullptr;
     const char* service_name = nullptr;
+    bool copy_mode = false;
     uint32_t region_size = 0x40000;
     uint32_t timeout_ms = 5000;
     int index = 2;
@@ -1394,6 +1395,8 @@ int main(int argc, char** argv) {
         } else if (std::strcmp(argument, "--service") == 0 &&
                    index + 1 < argc) {
             service_name = argv[++index];
+        } else if (std::strcmp(argument, "--mode") == 0 && index + 1 < argc) {
+            copy_mode = std::strcmp(argv[++index], "copy") == 0;
         } else if (std::strcmp(argument, "--region") == 0 && index + 1 < argc) {
             parse_u32(argv[++index], &region_size);
         } else if (std::strcmp(argument, "--timeout-ms") == 0 &&
@@ -1415,6 +1418,7 @@ int main(int argc, char** argv) {
     drvlite::session session;
     drvlite::attach_options options;
     options.region_size = region_size != 0 ? region_size : 0x40000;
+    options.mode = copy_mode ? KC_MODE_COPY : KC_MODE_MAPPED;
     const int attach_status = session.attach(options);
     if (attach_status != DRVLITE_OK) {
         print_status("attach", attach_status);

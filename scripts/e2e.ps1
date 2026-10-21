@@ -254,7 +254,7 @@ Push (Join-Path $RepoRoot "docs\e2e.md") "$GuestDir\e2e.md"
 # Guest helper batches (avoid nested quoting through bvmenv exec).
 $runCli = @"
 @echo off
-"$GuestDir\drvlite-cli.exe" run --allow-kernel-live --service Drvlite --image $GuestDir\drvlite.sys --bootstrap $GuestDir\boot.bin --map-cmd "$mapCommand" -- %*
+"$GuestDir\drvlite-cli.exe" run --allow-kernel-live --mode copy --service Drvlite --image $GuestDir\drvlite.sys --bootstrap $GuestDir\boot.bin --map-cmd "$mapCommand" -- %*
 "@
 $cycleCli = @"
 @echo off
