@@ -129,4 +129,8 @@ jobs:
 
       - name: Sign, load and exercise the kernel driver
         shell: pwsh
+        env:
+          SPC_PFX_BASE64: ${{ secrets.SPC_PFX_BASE64 }}
+          SPC_PFX_PASSWORD: ${{ secrets.SPC_PFX_PASSWORD }}
+          GH_TOKEN: ${{ github.token }}
         run: ./scripts/ci-kernel-smoke.ps1

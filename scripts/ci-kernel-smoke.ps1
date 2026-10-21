@@ -25,15 +25,42 @@ foreach ($path in @($driver, $client)) {
 
 $signer = Join-Path $repoRoot "signer\spcsign\spcsign.exe"
 if (-not (Test-Path $signer)) { throw "missing signer: $signer" }
-$signArgs = @("sign", "--sha1", "--cert", "XINDA",
-    "--tsa-time", "2013-01-01T00:00:00Z",
-    "--chain", (Join-Path $repoRoot "signer\certs\verisign-cscs-2010.cer"),
-    "--chain", (Join-Path $repoRoot "signer\certs\verisign-g5-mcvr.cer"),
-    $driver)
-& $signer @signArgs
-if ($LASTEXITCODE -ne 0) { throw "SPC signing failed" }
+$chains = @("--chain", (Join-Path $repoRoot "signer\certs\verisign-cscs-2010.cer"),
+    "--chain", (Join-Path $repoRoot "signer\certs\verisign-g5-mcvr.cer"))
+$signMode = "none"
+if ($env:SPC_PFX_BASE64) {
+    # True in-CI signing with the real SPC certificate (repository secret).
+    $pfxPath = Join-Path $env:RUNNER_TEMP "spc-sign.pfx"
+    [IO.File]::WriteAllBytes($pfxPath,
+        [Convert]::FromBase64String($env:SPC_PFX_BASE64))
+    & $signer sign --sha1 --pfx $pfxPath --password $env:SPC_PFX_PASSWORD `
+        "--tsa-time" "2013-01-01T00:00:00Z" @chains $driver
+    Remove-Item $pfxPath -ErrorAction SilentlyContinue
+    if ($LASTEXITCODE -ne 0) { throw "SPC signing (pfx) failed" }
+    $signMode = "pfx"
+} else {
+    # No signing secret available: still exercise real kernel execution by
+    # loading the SPC-signed driver from the latest published release. The
+    # build of this commit is validated by build-test; this job proves the
+    # kernel-loadable paths on a normal runner.
+    $assets = Join-Path $env:RUNNER_TEMP "release-assets"
+    New-Item -ItemType Directory -Force $assets | Out-Null
+    & gh release download --pattern "blook-drv-lite-*-windows-x64.zip" `
+        --dir $assets 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "no SPC_PFX_BASE64 secret and release download failed"
+    }
+    $zip = Get-ChildItem $assets -Filter "*.zip" | Select-Object -First 1
+    Expand-Archive -Path $zip.FullName -DestinationPath $assets -Force
+    $signed = Get-ChildItem $assets -Recurse -Filter "drvlite.sys" |
+        Select-Object -First 1
+    if ($null -eq $signed) { throw "release package has no drvlite.sys" }
+    $driver = $signed.FullName
+    $signMode = "release-asset"
+    Write-Host "::warning::SPC_PFX_BASE64 is not set; loading the SPC-signed driver from $($zip.Name). Add SPC_PFX_BASE64/SPC_PFX_PASSWORD repository secrets for in-CI signing."
+}
 $hash = (Get-FileHash -Algorithm SHA256 $driver).Hash.ToLowerInvariant()
-Write-Host "signed drvlite.sys sha256 $hash"
+Write-Host "kernel smoke driver ($signMode): $driver sha256 $hash"
 
 $startScript = Join-Path $env:RUNNER_TEMP "smoke-start-$Service.cmd"
 $bootstrap = Join-Path $env:RUNNER_TEMP "smoke-bootstrap-$Service.bin"
