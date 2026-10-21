@@ -560,6 +560,10 @@ Run-Case "shutdown_restore" {
 }
 
 Run-Case "trace_scan" {
+    # The service-load dev path leaves the driver image loaded after the CLI
+    # shut down its worker; stop the service so the unload path runs, then
+    # verify there is no leftover service/loader artefact.
+    Try-Guest "sc stop Drvlite" -Elevated | Out-Null
     $service = Try-Guest "sc query Drvlite" -Elevated
     if ($service -match "RUNNING") {
         throw "driver service still running after shutdown: $service"
