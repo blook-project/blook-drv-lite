@@ -32,13 +32,15 @@ operation returns `DRVLITE_ERR_UNSUPPORTED` and leaves `IA32_LSTAR` untouched.
 
 | Configuration | Effect | Failure mode |
 |---|---|---|
-| KVA shadow (`KiSystemCall64Shadow` as LSTAR target, shadow page tables) | InfinityHook cannot place the trampoline in the shadow mapping | `INFINITY_INSTALL` → `DRVLITE_ERR_UNSUPPORTED`, `infinity_status.flags = 16` |
+| KVA shadow (`KiSystemCall64Shadow` as LSTAR target, shadow page tables) | InfinityHook cannot place the trampoline in the shadow mapping; the reference e2e guest is such a build | `INFINITY_INSTALL` → `DRVLITE_ERR_UNSUPPORTED` (`16`); e2e records this case as `skip` with the reason, never a crash |
 | HVCI / VBS memory integrity | DSE patch may be rejected or ignored by the platform; code pages may be protected | `DSE_SET` → `DRVLITE_ERR_VERIFY` (read-back mismatch) or `DRVLITE_ERR_UNSUPPORTED`; memory r/w may still work |
+| test-signing enabled guest | unsigned images load even with DSE enabled, so a "blocked baseline" cannot be demonstrated | e2e gates the loader assertion and verifies the `g_CiOptions` disable/restore transition by value (`dse-cycle`) |
 | ARM64 | the driver is x64 only | will not load |
 | non-canonical / invalid addresses | caller error | `DRVLITE_ERR_PARAM` / `DRVLITE_ERR_IO`, never a fault |
 | process with decoy CR3 | validation against `PEB.ImageBaseAddress` fails | `MEM_PROCESS_QUERY`/read → `DRVLITE_ERR_NOT_FOUND` |
 | executable pool denied by policy (`POOL_FLAG_NON_PAGED_EXECUTE`) | trampoline allocation fails | `INFINITY_INSTALL` → `DRVLITE_ERR_NOMEM` |
 | no `ci.dll` in the module list | DSE resolver cannot resolve | `DSE_QUERY.supported = 0`, `flags = bad-image/no-ci-initialize` |
+| debug registers not exposed through `NtGetContextThread` (some virtualized CPUs) | DR hiding cannot be observed by a scanner | e2e records `hwbp_detection_bypass` as `skip` with the reason |
 
 ## Build / toolchain matrix
 
@@ -52,9 +54,19 @@ operation returns `DRVLITE_ERR_UNSUPPORTED` and leaves `IA32_LSTAR` untouched.
 
 ## Validation status
 
-Host unit tests (`drvlite-tests`, 45+ cases) cover page-table math, resolvers,
-decoder/detour edge cases, handle-table math and protocol validation on every
-CI run. Kernel-level validation requires a bvmenv VMware guest; the
-`docs/evidence/` directory records each run (result JSON, case log, state
-snapshot, screenshot). The README's supported-builds table is updated from
-that evidence.
+Host unit tests (`drvlite-tests`, 50 cases) cover page-table math, resolvers,
+decoder/detour edge cases, handle-table math, protocol layout and validation on
+every CI run.
+
+Kernel-level validation requires a bvmenv VMware guest. The e2e matrix drives
+the driver through the **service-load dev path** documented by the kchannel ABI
+(`sc create/start` + `Parameters\Bootstrap`, written by
+`drvlite-cli run --service Drvlite`): the test mapper harness is test-only and
+the production load model remains the manual-map entry (`DriverEntry` receives
+a kernel copy of the bootstrap in the `DriverObject` slot). The driver detects
+both modes by magic.
+
+`docs/evidence/` records each run (result JSON, case log, state snapshot,
+screenshot, bench numbers). Cases that depend on features the guest build does
+not permit (InfinityHook under KVA shadow, DR visibility, unsigned-load baseline
+under test-signing) are recorded as `skip` with the reason, not as failures.

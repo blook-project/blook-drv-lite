@@ -36,4 +36,27 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Module-list pagination and a diagnostic physical page for direct
   physical-path verification.
 
+## [1.0.0] - 2026-10-21
+
+### Fixed
+
+- DriverEntry deadlock under the SCM load path: the 32 MiB backwards PE scan
+  of the driver's own image and the `PsLoadedModuleList` walk were replaced
+  with `RtlPcToFileHeader`/`RtlImageNtHeader` and
+  `MmGetSystemRoutineAddress`; the client process lookup and diagnostic page
+  moved to a deferred PASSIVE system thread.
+- Service-load bootstrap delivery now stamps `peer_pid` with the CLI process
+  (a zero value made kchannel resolve the shared region in the system
+  process and fail with `KC_ERR_MAP`).
+- Full-permission handles are opened directly with `ObOpenObjectByPointer` in
+  kernel mode (no handle-table offset probing needed); the table-rewrite path
+  remains as fallback.
+- Large (63 KiB) kernel/process transfers now fit the kchannel payload budget,
+  and byte lists may be passed as one quoted argument or several tokens.
+- Stress/bench process memory: buffers are touched before measurement so the
+  CR3 walk sees present pages.
+- e2e runner captures tolerated guest output, records `skip` reasons, and
+  gates InfinityHook/DR-hiding cases on guest builds where the syscall entry
+  pattern is unsupported (KVA shadow).
+
 [Unreleased]: https://github.com/blook-project/blook-drv-lite/commits/main
