@@ -1,8 +1,0 @@
-blook-drv-lite e2e 2026-10-21T12:27:23.2150931+08:00
-=== signing test mapper
-  signed: D:\blook-kernel-project\blook-drv-lite\build\windows\x64\release\drvlite-mapper.sys
-    signer: CN="BEIJING XINDA HUANYU NETWORK SECURITY TECHNOLOGY CO.,LTD", OU=Digital ID Class 3 - Microsoft Software Validation v2, O="BEIJING XINDA HUANYU NETWORK SECURITY TECHNOLOGY CO.,LTD", L=" Beijing", S=Beijing, C=CN
-    digest: SHA-1, PKCS#7 7168 bytes, countersignature @ 2013-01-01T00:00:00Z
-=== creating VM vm-drv-lite
-warning: create reported failure but the VM exists; continuing
-start: already running: vm-drv-lite
