@@ -954,6 +954,8 @@ int run_command(drvlite::session& session, int argc, char** argv,
             std::printf("VirtualAlloc failed\n");
             return 1;
         }
+        /* Touch the whole range so the CR3 walk sees present pages. */
+        std::memset(local, 0x41, 0x2000);
         if (address == 0) {
             address = reinterpret_cast<uint64_t>(local);
         }
@@ -1237,6 +1239,72 @@ int run_command(drvlite::session& session, int argc, char** argv,
             iterations = 20;
         }
         return run_dse_load_test(session, argv[1], iterations);
+    }
+    if (command == "selftest") {
+        const uint32_t pid = GetCurrentProcessId();
+        void* local = VirtualAlloc(nullptr, 0x4000, MEM_COMMIT | MEM_RESERVE,
+                                   PAGE_READWRITE);
+        if (local == nullptr) {
+            return 1;
+        }
+        std::memcpy(local, "DRVLITE!", 8);
+        uint8_t bytes[16] = {};
+        const int read_status = session.read_process(
+            pid, reinterpret_cast<uint64_t>(local), bytes, 8);
+        const uint32_t canary = 0x11223344;
+        const int write_status = session.write_process(
+            pid, reinterpret_cast<uint64_t>(local) + 0x1000, &canary, 4);
+        uint32_t observed = 0;
+        const int reread_status = session.read_process(
+            pid, reinterpret_cast<uint64_t>(local) + 0x1000, &observed,
+            sizeof(observed));
+        const uint32_t canary2 = 0x55667788;
+        const int write_status2 =
+            session.write_process(pid, reinterpret_cast<uint64_t>(local) + 8,
+                                  &canary2, sizeof(canary2));
+        uint32_t observed2 = 0;
+        const int reread_status2 =
+            session.read_process(pid, reinterpret_cast<uint64_t>(local) + 8,
+                                 &observed2, sizeof(observed2));
+        drvlite::device_info info;
+        session.query_info(&info);
+        std::vector<uint8_t> large(DRVLITE_MAX_TRANSFER);
+        const int large_status =
+            session.read_kernel(info.kernel_base, large.data(),
+                                static_cast<uint32_t>(large.size()));
+        HANDLE handle = nullptr;
+        uint32_t granted = 0;
+        const int handle_status = session.open_process_handle(
+            pid, DRVLITE_ACCESS_FULL, &handle, &granted);
+        drvlite::dse_status dse_before;
+        drvlite::dse_status dse_after;
+        session.dse_query(&dse_before);
+        const int dse_disable = session.dse_set(0);
+        session.dse_query(&dse_after);
+        const int dse_restore = session.dse_restore();
+        std::printf(
+            "selftest: read=%d pattern=%s write=%d reread=%d observed=0x%x "
+            "samepage_write=%d samepage_read=%d observed2=0x%x "
+            "large=%d large_mz=%d handle=%d granted=0x%x "
+            "dse_supported=%d dse_disable=%d dse_after_patched=%d "
+            "dse_before_cur=0x%x dse_after_cur=0x%x dse_restore=%d "
+            "cli_pid=%u kernel_base=%s\n",
+            read_status, (bytes[0] == 'D' && bytes[1] == 'R') ? "ok" : "bad",
+            write_status, reread_status, observed, write_status2,
+            reread_status2, observed2, large_status,
+            (large[0] == 'M' && large[1] == 'Z') ? 1 : 0, handle_status,
+            granted, dse_before.supported ? 1 : 0, dse_disable,
+            dse_after.patched ? 1 : 0, dse_before.current, dse_after.current,
+            dse_restore, pid, hex_u64(info.kernel_base).c_str());
+        if (handle != nullptr) {
+            CloseHandle(handle);
+        }
+        VirtualFree(local, 0, MEM_RELEASE);
+        const bool ok =
+            read_status == DRVLITE_OK && write_status == DRVLITE_OK &&
+            reread_status == DRVLITE_OK && observed == canary &&
+            large_status == DRVLITE_OK && handle_status == DRVLITE_OK;
+        return ok ? 0 : 1;
     }
     if (command == "shutdown") {
         const int status = session.shutdown();

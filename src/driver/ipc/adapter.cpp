@@ -39,7 +39,8 @@ const u16 kApplicationOpcodes[] = {
 bool adapter_create(const kc_bootstrap* bootstrap) {
     driver_state& global = state();
     kc_kernel_config config{};
-    config.max_payload = DRVLITE_MAX_TRANSFER;
+    /* Headroom for the application reply header above the payload. */
+    config.max_payload = DRVLITE_MAX_TRANSFER + 128;
     config.poll_spin_us = 50;
     config.poll_idle_us = 1000;
     config.poll_idle_max_us = 50000;

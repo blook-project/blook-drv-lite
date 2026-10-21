@@ -150,6 +150,28 @@ bool handle_open(u32 pid, u32 type, u32 tid, u32 access, handle_result* out) {
         object = process;
     }
 
+    /* Preferred: open with the desired access directly from kernel mode. The
+     * access check is bypassed for KernelMode callers, so the handle already
+     * carries full permissions and no handle-table patching (or offset
+     * discovery) is required. */
+    HANDLE direct = nullptr;
+    KAPC_STATE direct_apc{};
+    KeStackAttachProcess(global.client_process, &direct_apc);
+    status = ObOpenObjectByPointer(object, 0, nullptr, desired_access,
+                                   is_thread ? *PsThreadType : *PsProcessType,
+                                   KernelMode, &direct);
+    KeUnstackDetachProcess(&direct_apc);
+    if (NT_SUCCESS(status) && direct != nullptr &&
+        direct != reinterpret_cast<HANDLE>(-1)) {
+        out->handle = reinterpret_cast<u64>(direct);
+        out->object = reinterpret_cast<u64>(object);
+        out->requested = desired_access;
+        out->granted = desired_access;
+        global.handles_open += 1;
+        ObDereferenceObject(object);
+        return true;
+    }
+
     HANDLE opened = nullptr;
     KAPC_STATE apc{};
     KeStackAttachProcess(global.client_process, &apc);
