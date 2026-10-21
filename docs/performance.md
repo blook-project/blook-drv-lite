@@ -26,6 +26,10 @@ keeps the raw output of every e2e run.
 | kernel virtual read 4 KiB | _pending VM run_ | | |
 | process read 4 KiB (CR3 walk) | _pending VM run_ | | |
 | process write 4 KiB | _pending VM run_ | | |
+| syscall entry overhead (hook on vs off) | _pending VM run_ | | |
+
+`bench` also prints a `syscall-overhead` line (baseline vs hooked `GetCurrentProcessId`
+loop, ns per syscall) so the InfinityHook cost is measured on the same host.
 
 ## What dominates the cost
 
