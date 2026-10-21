@@ -1,4 +1,4 @@
-# CI kernel-load smoke (real SCM execution, no test signing)
+# CI host e2e matrix (real SCM execution, no test signing)
 
 `kernel-load-smoke` is a required job in `.github/workflows/ci.yml`. It runs on
 a stock `windows-latest` runner and proves that the built driver actually
@@ -95,3 +95,19 @@ page-hash path is fixed.
 - The client is a separate user-mode process connecting over the manual-map
   ABI: `info` proves DriverEntry and the kchannel handshake ran; `read-kernel`
   proves an application opcode executed with the CR3 page walk.
+
+## Full matrix and artifacts
+
+The required host-e2e job runs scripts/host-e2e.ps1: the same SCM load recipe,
+then driver session, physical/kernel/process (CR3) read+write, page crossings,
+63 KiB chunking, module dump, DSE patch/restore values, full-permission handles
+(including PPL), invalid-input fuzz, 1000x load/unload, unload trace scan and
+bench. Cases that cannot run on hosted runners are skip entries with one of
+the allowed reasons (KVA-shadow platform, manual-map NX on 26200,\
+equires VT-x, equires VM reboot/BSOD, locklisted victim driver).
+
+Artifacts uploaded by CI: ci-e2e-result.json (schema+cases[]+counts),
+cases.txt, cdedit.txt (testsigning state), signtool-kp.txt (/kp verdict)
+and ench.txt. The result nvironment records 	estsigning,
+
+ointegritychecks and kp_verified. 
