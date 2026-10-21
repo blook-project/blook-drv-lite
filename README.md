@@ -59,7 +59,9 @@ repository.
 Documentation:
 [architecture](docs/architecture.md) ·
 [protocol / 22 opcodes](docs/protocol.md) ·
+[compatibility matrix](docs/compat.md) ·
 [SDK guide](docs/sdk.md) ·
+[CLI + JSON schema](docs/cli.md) ·
 [safety and limits](docs/safety.md) ·
 [performance](docs/performance.md) ·
 [VM e2e](docs/e2e.md)

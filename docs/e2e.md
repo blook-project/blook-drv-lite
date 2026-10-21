@@ -56,16 +56,22 @@ VM is reset and the JSON records the failure.
 | infinityhook_counters | `hook-test` installs the trampoline, counts syscalls (> before), removes it |
 | hwbp_detection_bypass | target thread DR0 is visible before, `0` while hiding is enabled, visible again after restore |
 | negative_input_fuzz | malformed requests are rejected, driver still answers `query_info` |
+| page_paths_and_crossings | 4 KiB crossing, non-present page, non-canonical address, 2 MiB kernel boundary and a 63 KiB chunked kernel read all behave correctly |
+| dse_concurrent_load | unsigned load blocked before the patch, succeeds while a loader thread hammers `CreateService/StartService` and the main thread keeps reading kernel memory, restore verified |
+| handle_protected_process | with a PPL/AV process present: minimal-access open, GrantedAccess rewritten to full, process terminated through the handle |
+| shutdown_with_hooks_armed | trampoline installed, then `shutdown`; guest stays responsive and LSTAR is restored |
 | stress_memory_ops | 1000 mixed process read/write + kernel + physical operations, 0 failures |
 | perf_benchmark | median/p99/throughput for physical/kernel/process read+write |
 | shutdown_restore | `shutdown` returns ok and the guest stays responsive |
 | trace_scan | no `drvlite` service/registry/`driverquery` trace from the mapped driver (the test mapper service is expected and excluded) |
-| load_unload_cycles | 10 map → shutdown → unmap cycles without crash/hang |
+| load_unload_1000 | 1000 fast in-process map → handshake → shutdown → unmap cycles |
+| load_unload_cycles | 10 process-level map → shutdown → unmap cycles |
 
 ## Result format
 
 ```json
 {
+  "schema": "bvmenv.e2e.v1",
   "run_id": "20261021T030000Z",
   "version": "1.0.0",
   "vm": "vm-drv-lite",

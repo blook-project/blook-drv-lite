@@ -154,9 +154,11 @@ if os.isdir("src/sdk") and os.isdir("src/cli") and kchannel_ok and kc_has_user t
         set_kind("binary")
         set_languages("cxx20")
         add_defines("NOMINMAX", "UNICODE", "_UNICODE")
-        add_includedirs({ "include", "src", kc_include })
+        add_includedirs({ "include", "src", kc_include,
+            "tests/guest/mapper" })
         add_files("src/cli/*.cpp")
         add_deps("drvlite-sdk")
+        add_syslinks("advapi32")
         add_cxxflags("/utf-8", "/permissive-", "/W4", {tools = "cl"})
         set_encodings("utf8")
 end

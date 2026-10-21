@@ -13,12 +13,15 @@
 
 #include <windows.h>
 
+#include "mapper_abi.h"
+
 #include <algorithm>
 #include <cinttypes>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -64,6 +67,209 @@ std::string hex_u64(uint64_t value) {
     return buffer;
 }
 
+bool read_whole_file(const char* path, std::vector<uint8_t>* bytes) {
+    FILE* file = nullptr;
+    if (fopen_s(&file, path, "rb") != 0 || file == nullptr) {
+        return false;
+    }
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fclose(file);
+        return false;
+    }
+    const long size = ftell(file);
+    if (size <= 0 || fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return false;
+    }
+    bytes->resize(static_cast<size_t>(size));
+    const size_t read = fread(bytes->data(), 1, bytes->size(), file);
+    fclose(file);
+    return read == bytes->size();
+}
+
+bool mapper_map_image(const std::vector<uint8_t>& image,
+                      const kc_bootstrap& bootstrap, uint64_t* mapped_base,
+                      uint32_t* entry_status) {
+    HANDLE device =
+        CreateFileA(DRVLITE_MAPPER_WIN32_NAME, GENERIC_READ | GENERIC_WRITE, 0,
+                    nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (device == INVALID_HANDLE_VALUE) {
+        std::printf("cannot open mapper device (error %lu)\n", GetLastError());
+        return false;
+    }
+    const size_t request_size =
+        sizeof(drvlite_map_request) + image.size() + sizeof(bootstrap);
+    std::vector<uint8_t> request(request_size, 0);
+    auto* header = reinterpret_cast<drvlite_map_request*>(request.data());
+    header->image_size = static_cast<unsigned int>(image.size());
+    header->bootstrap_size = sizeof(kc_bootstrap);
+    header->flags = 1;
+    header->image_offset = sizeof(drvlite_map_request);
+    header->bootstrap_offset = sizeof(drvlite_map_request) + image.size();
+    std::memcpy(request.data() + header->image_offset, image.data(),
+                image.size());
+    std::memcpy(request.data() + header->bootstrap_offset, &bootstrap,
+                sizeof(bootstrap));
+    drvlite_map_response response{};
+    DWORD returned = 0;
+    const BOOL ok = DeviceIoControl(
+        device, static_cast<DWORD>(IOCTL_DRVLITE_MAPPER_MAP), request.data(),
+        static_cast<DWORD>(request.size()), &response,
+        static_cast<DWORD>(sizeof(response)), &returned, nullptr);
+    CloseHandle(device);
+    if (!ok) {
+        std::printf("map ioctl failed (error %lu)\n", GetLastError());
+        return false;
+    }
+    *mapped_base = response.mapped_base;
+    if (entry_status != nullptr) {
+        *entry_status = response.status;
+    }
+    return response.status == 0 && response.mapped_base != 0;
+}
+
+bool mapper_unmap_image(uint64_t base) {
+    HANDLE device =
+        CreateFileA(DRVLITE_MAPPER_WIN32_NAME, GENERIC_READ | GENERIC_WRITE, 0,
+                    nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (device == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    drvlite_unmap_request request{};
+    request.mapped_base = base;
+    drvlite_unmap_response response{};
+    DWORD returned = 0;
+    const BOOL ok = DeviceIoControl(
+        device, static_cast<DWORD>(IOCTL_DRVLITE_MAPPER_UNMAP), &request,
+        static_cast<DWORD>(sizeof(request)), &response,
+        static_cast<DWORD>(sizeof(response)), &returned, nullptr);
+    CloseHandle(device);
+    return ok && response.status == 0;
+}
+
+/* Fast map -> handshake -> shutdown -> unmap loop used by the 1000x
+ * load/unload e2e case. Avoids process spawn overhead per cycle. */
+int run_cycle_test(const char* image_path, uint32_t cycles) {
+    std::vector<uint8_t> image;
+    if (!read_whole_file(image_path, &image)) {
+        std::printf("cannot read %s\n", image_path);
+        return 1;
+    }
+    uint32_t failures = 0;
+    for (uint32_t index = 0; index < cycles; ++index) {
+        drvlite::session session;
+        if (session.attach() != DRVLITE_OK) {
+            ++failures;
+            continue;
+        }
+        uint64_t mapped = 0;
+        if (!mapper_map_image(image, session.bootstrap(), &mapped, nullptr) ||
+            session.finish(5000) != DRVLITE_OK) {
+            ++failures;
+            session.detach();
+            continue;
+        }
+        drvlite::device_info info;
+        if (session.query_info(&info) != DRVLITE_OK || info.driver_base == 0) {
+            ++failures;
+        }
+        if (session.shutdown() != DRVLITE_OK) {
+            ++failures;
+        }
+        session.detach();
+        if (mapped != 0 && !mapper_unmap_image(mapped)) {
+            ++failures;
+        }
+    }
+    std::printf("cycle-test: %u cycles, %u failures\n", cycles, failures);
+    return failures == 0 ? 0 : 1;
+}
+
+bool try_load_driver_service(const char* service_name, const char* path,
+                             DWORD* error) {
+    SC_HANDLE manager = OpenSCManagerA(nullptr, nullptr, SC_MANAGER_ALL_ACCESS);
+    if (manager == nullptr) {
+        *error = GetLastError();
+        return false;
+    }
+    SC_HANDLE service = CreateServiceA(
+        manager, service_name, service_name, SC_MANAGER_ALL_ACCESS,
+        SERVICE_KERNEL_DRIVER, SERVICE_DEMAND_START, SERVICE_ERROR_NORMAL, path,
+        nullptr, nullptr, nullptr, nullptr, nullptr);
+    if (service == nullptr) {
+        *error = GetLastError();
+        CloseServiceHandle(manager);
+        return false;
+    }
+    const BOOL started = StartServiceA(service, 0, nullptr);
+    *error = started ? ERROR_SUCCESS : GetLastError();
+    if (started) {
+        SERVICE_STATUS status{};
+        ControlService(service, SERVICE_CONTROL_STOP, &status);
+    }
+    DeleteService(service);
+    CloseServiceHandle(service);
+    CloseServiceHandle(manager);
+    return started != FALSE;
+}
+
+/* DSE patch with a concurrent loader: a worker thread hammers
+ * CreateService/StartService while the main thread keeps reading kernel
+ * memory through the driver, then DSE is restored. */
+int run_dse_load_test(drvlite::session& session, const char* driver_path,
+                      uint32_t iterations) {
+    DWORD baseline_error = ERROR_SUCCESS;
+    const bool baseline = try_load_driver_service("DrvliteConcurrentBaseline",
+                                                  driver_path, &baseline_error);
+    drvlite::dse_status dse;
+    if (session.dse_query(&dse) != DRVLITE_OK || !dse.supported) {
+        std::printf("dse-load-test: DSE resolver unsupported\n");
+        return 1;
+    }
+    if (session.dse_set(0) != DRVLITE_OK) {
+        std::printf("dse-load-test: dse_set failed\n");
+        return 1;
+    }
+    volatile LONG loader_failures = 0;
+    volatile LONG loader_successes = 0;
+    std::thread loader([&] {
+        for (uint32_t index = 0; index < iterations; ++index) {
+            char name[64] = {};
+            std::snprintf(name, sizeof(name), "DrvliteConcurrent%u", index % 8);
+            DWORD error = ERROR_SUCCESS;
+            if (try_load_driver_service(name, driver_path, &error)) {
+                InterlockedIncrement(&loader_successes);
+            } else {
+                InterlockedIncrement(&loader_failures);
+            }
+        }
+    });
+    uint32_t memory_failures = 0;
+    drvlite::device_info info;
+    session.query_info(&info);
+    while (loader_failures + loader_successes < static_cast<LONG>(iterations)) {
+        uint8_t bytes[16] = {};
+        if (info.kernel_base == 0 ||
+            session.read_kernel(info.kernel_base, bytes, sizeof(bytes)) !=
+                DRVLITE_OK) {
+            ++memory_failures;
+        }
+    }
+    loader.join();
+    const int restore = session.dse_restore();
+    std::printf(
+        "dse-load-test: baseline=%s after-patch=%ld ok/%ld failed, "
+        "memory_failures=%u restore=%s\n",
+        baseline ? "loaded(unexpected)" : "blocked", loader_successes,
+        loader_failures, memory_failures,
+        restore == DRVLITE_OK ? "ok" : "failed");
+    return (baseline == false &&
+            loader_successes == static_cast<LONG>(iterations) &&
+            memory_failures == 0 && restore == DRVLITE_OK)
+               ? 0
+               : 1;
+}
+
 int usage() {
     std::printf(
         "drvlite-cli %s - blook-drv-lite command line\n\n"
@@ -85,6 +291,9 @@ int usage() {
         "    handle --pid <pid> [--full]\n"
         "    hook install|status|remove|hide --pid <pid>|shield --pid <pid> "
         "--ssn <n>\n"
+        "    memtest <pid> <buffer>\n"
+        "    hook-test [ssn...] | hook-shutdown-test\n"
+        "    dse-load-test <unsigned.sys> [iterations]\n"
         "    shutdown\n"
         "    version\n\n"
         "  Every command has a --timeout-ms option (default 5000).\n",
@@ -142,12 +351,30 @@ int run_command(drvlite::session& session, int argc, char** argv,
         return usage();
     }
     const std::string command = argv[0];
+    bool json = false;
+    for (int index = 1; index < argc; ++index) {
+        if (std::strcmp(argv[index], "--json") == 0) {
+            json = true;
+        }
+    }
     if (command == "info") {
         drvlite::device_info info;
         const int status = session.query_info(&info);
         if (status != DRVLITE_OK) {
             print_status("query_info", status);
             return 1;
+        }
+        if (json) {
+            std::printf(
+                "{\"nt_build\":%u,\"abi\":\"%u.%u\",\"features\":%u,"
+                "\"driver_base\":\"%s\",\"driver_size\":%u,"
+                "\"kernel_base\":\"%s\",\"kernel_size\":%u,"
+                "\"client_pid\":%u,\"client_eprocess\":\"%s\"}\n",
+                info.nt_build, info.abi >> 16, info.abi & 0xFFFF, info.features,
+                hex_u64(info.driver_base).c_str(), info.driver_size,
+                hex_u64(info.kernel_base).c_str(), info.kernel_size,
+                info.client_pid, hex_u64(info.client_eprocess).c_str());
+            return 0;
         }
         std::printf("nt build       : %u\n", info.nt_build);
         std::printf("abi            : %u.%u\n", info.abi >> 16,
@@ -282,6 +509,19 @@ int run_command(drvlite::session& session, int argc, char** argv,
             print_status("modules", status);
             return 1;
         }
+        if (json) {
+            std::printf("[");
+            for (size_t index = 0; index < modules.size(); ++index) {
+                const drvlite_module_info& module = modules[index];
+                std::printf(
+                    "%s{\"base\":\"%s\",\"size\":%llu,"
+                    "\"name\":\"%s\"}",
+                    index == 0 ? "" : ",", hex_u64(module.base).c_str(),
+                    static_cast<unsigned long long>(module.size), module.name);
+            }
+            std::printf("]\n");
+            return 0;
+        }
         for (const drvlite_module_info& module : modules) {
             std::printf("%s  %-12s %8llu  %s\n", hex_u64(module.base).c_str(),
                         module.name,
@@ -336,6 +576,17 @@ int run_command(drvlite::session& session, int argc, char** argv,
         if (status != DRVLITE_OK) {
             print_status("dse_query", status);
             return 1;
+        }
+        if (json) {
+            std::printf(
+                "{\"supported\":%s,\"patched\":%s,\"address\":\"%s\","
+                "\"original\":%u,\"current\":%u,\"ci_base\":\"%s\","
+                "\"ci_size\":%u,\"via\":%u,\"error\":%u}\n",
+                dse.supported ? "true" : "false",
+                dse.patched ? "true" : "false", hex_u64(dse.address).c_str(),
+                dse.original, dse.current, hex_u64(dse.ci_base).c_str(),
+                dse.ci_size, dse.via, dse.error);
+            return dse.supported ? 0 : 2;
         }
         std::printf("supported : %s\n", dse.supported ? "yes" : "no");
         std::printf("patched   : %s\n", dse.patched ? "yes" : "no");
@@ -859,6 +1110,100 @@ int run_command(drvlite::session& session, int argc, char** argv,
                     alive ? 1 : 0);
         return ok && alive ? 0 : 1;
     }
+    if (command == "memtest") {
+        if (argc != 3) {
+            return usage();
+        }
+        uint32_t pid = 0;
+        uint64_t address = 0;
+        if (!parse_u32(argv[1], &pid) || !parse_u64(argv[2], &address)) {
+            return 1;
+        }
+        drvlite::device_info info;
+        if (session.query_info(&info) != DRVLITE_OK) {
+            return 1;
+        }
+        uint32_t failures = 0;
+        uint8_t bytes[16] = {};
+        /* 4 KiB page crossing (the target buffer is 0x4000 bytes). */
+        if (session.read_process(pid, address + 0xFF8, bytes, sizeof(bytes)) !=
+            DRVLITE_OK) {
+            std::printf("memtest: 4k-crossing read failed\n");
+            ++failures;
+        }
+        /* Valid write/read inside the second page. */
+        const uint32_t canary = 0xCAFEBABE;
+        if (session.write_process(pid, address + 0x1FF8, &canary,
+                                  sizeof(canary)) != DRVLITE_OK) {
+            ++failures;
+        }
+        uint32_t observed = 0;
+        if (session.read_process(pid, address + 0x1FF8, &observed,
+                                 sizeof(observed)) != DRVLITE_OK ||
+            observed != canary) {
+            ++failures;
+        }
+        /* Non-present page must be an error, not a fault/BSOD. */
+        if (session.read_process(pid, address + 0x100000, bytes,
+                                 sizeof(bytes)) == DRVLITE_OK) {
+            std::printf("memtest: unmapped read unexpectedly succeeded\n");
+            ++failures;
+        }
+        /* Non-canonical user address must be rejected. */
+        if (session.write_process(pid, 0x0000800000000000ULL, &canary,
+                                  sizeof(canary)) == DRVLITE_OK) {
+            ++failures;
+        }
+        /* 2 MiB boundary inside ntoskrnl (large-page path). */
+        if (info.kernel_base == 0 ||
+            session.read_kernel(info.kernel_base + 0x200000 - 8, bytes,
+                                sizeof(bytes)) != DRVLITE_OK) {
+            std::printf("memtest: 2m-boundary kernel read failed\n");
+            ++failures;
+        }
+        /* Chunked large kernel read (63 KiB, header must be MZ). */
+        std::vector<uint8_t> large(DRVLITE_MAX_TRANSFER);
+        if (session.read_kernel(info.kernel_base, large.data(),
+                                static_cast<uint32_t>(large.size())) !=
+                DRVLITE_OK ||
+            large[0] != 'M' || large[1] != 'Z') {
+            std::printf("memtest: large kernel read failed\n");
+            ++failures;
+        }
+        std::printf(
+            "memtest: page-crossing, non-present, non-canonical, "
+            "2m-boundary and chunked reads: %s\n",
+            failures == 0 ? "ok" : "failed");
+        return failures == 0 ? 0 : 1;
+    }
+    if (command == "hook-shutdown-test") {
+        if (session.infinity_install({}) != DRVLITE_OK) {
+            print_status("hook_install", DRVLITE_ERR_UNSUPPORTED);
+            return 1;
+        }
+        drvlite::hook_status status;
+        session.infinity_status(&status);
+        const int shutdown_status = session.shutdown();
+        std::printf(
+            "hook-shutdown-test: installed=1 syscalls=%llu "
+            "shutdown=%d\n",
+            static_cast<unsigned long long>(status.total_syscalls),
+            shutdown_status);
+        return shutdown_status == DRVLITE_OK ? 0 : 1;
+    }
+    if (command == "dse-load-test") {
+        if (argc < 2) {
+            return usage();
+        }
+        uint32_t iterations = 20;
+        if (argc >= 3) {
+            parse_u32(argv[2], &iterations);
+        }
+        if (iterations == 0) {
+            iterations = 20;
+        }
+        return run_dse_load_test(session, argv[1], iterations);
+    }
     if (command == "shutdown") {
         const int status = session.shutdown();
         print_status("shutdown", status);
@@ -906,6 +1251,32 @@ int main(int argc, char** argv) {
                     drvlite::version_string(), DRVLITE_ABI_MAJOR,
                     DRVLITE_ABI_MINOR);
         return 0;
+    }
+    if (command == "cycle-test") {
+        const char* allow = std::getenv("DRVLITE_ALLOW_KERNEL_LIVE");
+        if (allow == nullptr || std::strcmp(allow, "1") != 0) {
+            std::printf(
+                "refusing to load kernel code on this machine "
+                "(DRVLITE_ALLOW_KERNEL_LIVE is not set)\n");
+            return 3;
+        }
+        const char* image_path = nullptr;
+        uint32_t cycles = 100;
+        for (int index = 2; index < argc; ++index) {
+            if (std::strcmp(argv[index], "--image") == 0 && index + 1 < argc) {
+                image_path = argv[++index];
+            } else if (std::strcmp(argv[index], "--cycles") == 0 &&
+                       index + 1 < argc) {
+                parse_u32(argv[++index], &cycles);
+            }
+        }
+        if (image_path == nullptr || cycles == 0) {
+            std::printf(
+                "usage: drvlite-cli cycle-test --image <sys> "
+                "--cycles <n>\n");
+            return 2;
+        }
+        return run_cycle_test(image_path, cycles);
     }
     if (command == "run") {
         const char* allow = std::getenv("DRVLITE_ALLOW_KERNEL_LIVE");

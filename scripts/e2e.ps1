@@ -18,6 +18,7 @@ param(
     [int]$StepTimeoutSec = 180,
     [switch]$SkipBuild,
     [switch]$KeepVm,
+    [switch]$Reuse,
     [switch]$NoReset
 )
 $ErrorActionPreference = "Stop"
@@ -182,11 +183,16 @@ if (-not $exists) {
     $create = Invoke-Bv @("create", $Vm) 240
     if ($create.ExitCode -ne 0) { throw "VM create failed: $($create.Output)" }
 } else {
-    Log "=== resetting VM $Vm"
-    $reset = Invoke-Bv @("reset", $Vm) 180
-    if ($reset.ExitCode -ne 0) {
-        $start = Invoke-Bv @("start", $Vm) 180
-        if ($start.ExitCode -ne 0) { throw "VM start failed: $($start.Output)" }
+    if ($Reuse) {
+        Log "=== reusing running VM $Vm (no reset)"
+        Invoke-Bv @("start", $Vm) 180 | Out-Null
+    } else {
+        Log "=== resetting VM $Vm"
+        $reset = Invoke-Bv @("reset", $Vm) 180
+        if ($reset.ExitCode -ne 0) {
+            $start = Invoke-Bv @("start", $Vm) 180
+            if ($start.ExitCode -ne 0) { throw "VM start failed: $($start.Output)" }
+        }
     }
 }
 $started = Invoke-Bv @("start", $Vm) 180
@@ -365,6 +371,48 @@ Run-Case "perf_benchmark" {
     return (($out -split "`n" | Where-Object { $_ -match "median" }) -join "; ")
 }
 
+Run-Case "page_paths_and_crossings" {
+    $out = Run-Cli "memtest $targetPid $targetBuffer"
+    if ($out -notmatch "memtest: .*ok") { throw "memtest failed: $out" }
+    return "4k crossing, non-present, non-canonical, 2m boundary and chunked kernel read ok"
+}
+
+Run-Case "dse_concurrent_load" {
+    $out = Run-Cli "dse-load-test $GuestDir\drvlite-unsigned.sys 20"
+    if ($out -notmatch "baseline=blocked" -or $out -notmatch "restore=ok") {
+        throw "dse-load-test failed: $out"
+    }
+    return (($out -split "`n" | Where-Object { $_ -match "dse-load-test:" }) -join "; ")
+}
+
+Run-Case "handle_protected_process" {
+    $task = Guest ('tasklist /fi "imagename eq MsMpEng.exe" /fo csv /nh') -Elevated
+    $match = [regex]::Match($task, '"MsMpEng.exe","(\d+)"')
+    if (-not $match.Success) {
+        return "skipped: no PPL/AV process present in the guest"
+    }
+    $pid = $match.Groups[1].Value
+    $out = Run-Cli "handle --pid $pid --full --kill"
+    if ($out -notmatch "terminate: yes") {
+        throw "protected-process handle not usable: $out"
+    }
+    return "PPL process $pid terminated through a full-permission handle"
+}
+
+Run-Case "shutdown_with_hooks_armed" {
+    $out = Run-Cli "hook-shutdown-test"
+    if ($out -notmatch "installed=1") { throw "hook install failed: $out" }
+    $alive = Guest "echo alive"
+    if ($alive -notmatch "alive") { throw "guest unresponsive after hook shutdown" }
+    return "hook installed then shutdown restored the syscall entry"
+}
+
+Run-Case "load_unload_1000" {
+    $out = Guest "set DRVLITE_ALLOW_KERNEL_LIVE=1 && $GuestDir\drvlite-cli.exe cycle-test --image $GuestDir\drvlite.sys --cycles 1000" -Elevated -TimeoutSec 900
+    if ($out -notmatch "1000 cycles, 0 failures") { throw "cycle-test failed: $out" }
+    return "1000 map/handshake/shutdown/unmap cycles"
+}
+
 Run-Case "shutdown_restore" {
     $out = Run-Cli "shutdown"
     if ($out -notmatch "shutdown: ok") { throw "shutdown failed: $out" }
@@ -391,7 +439,7 @@ Run-Case "load_unload_cycles" {
     }
     $alive = Guest "echo alive"
     if ($alive -notmatch "alive") { throw "guest unresponsive after cycles" }
-    return "$cycles map/shutdown/unmap cycles"
+    return "$cycles process-level map/shutdown/unmap cycles"
 }
 
 # ---------------------------------------------------------------------------
@@ -407,6 +455,7 @@ if ($screenshot.ExitCode -ne 0) {
 $passed = @($cases | Where-Object { $_.status -eq "pass" }).Count
 $failed = @($cases | Where-Object { $_.status -ne "pass" }).Count
 $result = [pscustomobject]@{
+    schema = "bvmenv.e2e.v1"
     run_id = (Get-Date -Format "yyyyMMdd'T'HHmmss'Z'")
     version = (Get-Content (Join-Path $RepoRoot "version.txt") -Raw).Trim()
     vm = $Vm

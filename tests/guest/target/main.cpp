@@ -15,7 +15,7 @@
 
 namespace {
 
-constexpr size_t kBufferSize = 0x1000;
+constexpr size_t kBufferSize = 0x4000;
 
 volatile LONG g_stop = 0;
 
