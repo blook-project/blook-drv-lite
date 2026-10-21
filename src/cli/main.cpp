@@ -1319,6 +1319,48 @@ int run_command(drvlite::session& session, int argc, char** argv,
             large_status == DRVLITE_OK && handle_status == DRVLITE_OK;
         return ok ? 0 : 1;
     }
+    if (command == "kernel-rw") {
+        /* One-session kernel write/read test on the diagnostic page: the page
+         * is allocated per driver instance, so write and verify must not be
+         * split across CLI invocations (each restarts the driver). */
+        drvlite::device_info info;
+        if (session.query_info(&info) != DRVLITE_OK || info.test_page_va == 0) {
+            print_status("kernel-rw", DRVLITE_ERR_NOT_FOUND);
+            return 1;
+        }
+        uint8_t marker[12] = {};
+        if (session.read_kernel(info.test_page_va, marker, sizeof(marker)) !=
+                DRVLITE_OK ||
+            std::memcmp(marker, "DRVLITE-PHYS", 12) != 0) {
+            print_status("kernel-rw_read", DRVLITE_ERR_VERIFY);
+            return 1;
+        }
+        const uint32_t canary = 0x41414141;
+        if (session.write_kernel(info.test_page_va, &canary, sizeof(canary)) !=
+            DRVLITE_OK) {
+            print_status("kernel-rw_write", DRVLITE_ERR_IO);
+            return 1;
+        }
+        uint32_t observed = 0;
+        if (session.read_kernel(info.test_page_va, &observed,
+                                sizeof(observed)) != DRVLITE_OK ||
+            observed != canary) {
+            print_status("kernel-rw_verify", DRVLITE_ERR_VERIFY);
+            return 1;
+        }
+        const uint32_t original = *reinterpret_cast<const uint32_t*>(marker);
+        session.write_kernel(info.test_page_va, &original, sizeof(original));
+        uint32_t restored = 0;
+        if (session.read_kernel(info.test_page_va, &restored,
+                                sizeof(restored)) != DRVLITE_OK ||
+            restored != original) {
+            print_status("kernel-rw_restore", DRVLITE_ERR_VERIFY);
+            return 1;
+        }
+        std::printf("kernel-rw: ok (va=%s marker -> canary -> restored)\n",
+                    hex_u64(info.test_page_va).c_str());
+        return 0;
+    }
     if (command == "dse-cycle") {
         drvlite::dse_status before;
         drvlite::dse_status after_patch;

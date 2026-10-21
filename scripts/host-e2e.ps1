@@ -180,17 +180,13 @@ try {
         $base = if ($script:kernelBase) { $script:kernelBase } else { throw "kernel base unknown" }
         $read = Invoke-Cli @("read-kernel", $base, "2")
         if ($read.code -ne 0 -or $read.out -notmatch "4d 5a") { throw "kernel read did not return MZ" }
-        $page = if ($script:testPageVa) { $script:testPageVa } else { throw "test page VA unknown" }
-        $readPage = Invoke-Cli @("read-kernel", $page, "12")
-        if ($readPage.code -ne 0 -or $readPage.out -notmatch "44 52 56 4c") {
-            throw "diagnostic page read did not return the marker"
+        # Page write/verify must happen in one driver session: the diagnostic
+        # page is allocated per DriverEntry, and each CLI invocation reloads.
+        $rw = Invoke-Cli @("kernel-rw")
+        if ($rw.code -ne 0 -or $rw.out -notmatch "kernel-rw: ok") {
+            throw "kernel diagnostic-page write/read failed: $($rw.out)"
         }
-        $write = Invoke-Cli @("write-kernel", $page, "41 41 41 41")
-        if ($write.code -ne 0) { throw "kernel write failed" }
-        $verify = Invoke-Cli @("read-kernel", $page, "4")
-        if ($verify.out -notmatch "41 41 41 41") { throw "kernel write did not verify" }
-        Invoke-Cli @("write-kernel", $page, "44 52 56 4c") | Out-Null
-        return "kernel MZ + diagnostic-page write/read verified"
+        return "kernel MZ verified; diagnostic-page marker -> canary -> restore ok"
     }
 
     Run-Case "kernel_chunked_read" {
@@ -257,17 +253,18 @@ try {
         if ($result.out -notmatch "restore=0" -or $result.out -notmatch "restored=0") {
             throw "DSE restore not verified"
         }
-        $loaded = $false
-        & sc.exe create DrvliteUnsigned type= kernel binPath= $unsigned 2>&1 | Out-Null
-        $startUnsigned = Invoke-Sc @("start", "DrvliteUnsigned")
-        $query = Invoke-Sc @("query", "DrvliteUnsigned")
-        if ($query.out -match "RUNNING") { $loaded = $true }
-        & sc.exe stop DrvliteUnsigned 2>&1 | Out-Null
-        & sc.exe delete DrvliteUnsigned 2>&1 | Out-Null
-        if (-not $loaded) {
-            throw "unsigned driver did not load on the testsigning runner: $($startUnsigned.out)"
+        # Same-session load proof: baseline blocked, then with g_CiOptions
+        # patched the unsigned helper must start (runner has no test-signing).
+        $load = Invoke-Cli @("dse-load-test", $unsigned, "5")
+        if ($load.code -ne 0) { throw "dse-load-test failed: $($load.out)" }
+        if ($load.out -notmatch "baseline=blocked") {
+            throw "unsigned driver was not blocked before the DSE patch"
         }
-        return "g_CiOptions patched/restored by value; unsigned driver loaded"
+        if ($load.out -notmatch "after-patch=5 ok/0 failed") {
+            throw "unsigned driver did not load after the DSE patch: $($load.out)"
+        }
+        if ($load.out -notmatch "restore=ok") { throw "DSE restore after load test failed" }
+        return "g_CiOptions patched/restored by value; unsigned driver blocked before and loaded after the patch"
     }
 
     Run-Case "handle_full_access" {
