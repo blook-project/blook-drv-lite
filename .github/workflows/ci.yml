@@ -101,3 +101,32 @@ jobs:
           name: blook-drv-lite-${{ github.sha }}
           path: artifacts/*
           if-no-files-found: error
+
+      - name: Upload kernel smoke binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: blook-drv-lite-smoke-${{ github.sha }}
+          path: |
+            build/windows/x64/release/drvlite.sys
+            build/windows/x64/release/drvlite-cli.exe
+          if-no-files-found: error
+
+  # Real kernel execution: sign the driver with the repository SPC signer (no
+  # test-signing mode), load it with sc.exe on windows-latest, drive it through
+  # drvlite-cli (info + kernel read) and assert the service reaches RUNNING.
+  kernel-load-smoke:
+    needs: build-test
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download kernel smoke binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: blook-drv-lite-smoke-${{ github.sha }}
+          path: build/windows/x64/release
+
+      - name: Sign, load and exercise the kernel driver
+        shell: pwsh
+        run: ./scripts/ci-kernel-smoke.ps1
