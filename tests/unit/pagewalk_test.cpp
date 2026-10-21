@@ -171,4 +171,15 @@ TEST(PageWalk, RejectsBadCr3) {
     EXPECT_FALSE(core::validate_cr3(memory.reader(), 0x1234, kUserVa, 0));
 }
 
+TEST(PageWalk, LargePageWithoutPresentBitIsNotPresent) {
+    mock_phys memory;
+    drvlite::test::page_table_builder tables(memory);
+    /* Manually install a PDPT entry pointing at a PD whose slot is 0. */
+    tables.map_2m(kUserVa, memory.allocate_page());
+    core::translation mapped;
+    EXPECT_NE(core::walk_code::ok,
+              core::translate(memory.reader(), tables.cr3(), kUserVa + 0x400000,
+                              &mapped));
+}
+
 }  // namespace

@@ -144,4 +144,29 @@ TEST(ProtocolCodec, RejectsMessagesAboveTheTransferLimit) {
     EXPECT_EQ(codec_code::too_large, check.code);
 }
 
+TEST(ProtocolCodec, RejectsRepliesWithWrongOpcodeOrSize) {
+    drvlite_query_info_rsp response{};
+    response.hdr.magic = DRVLITE_RSP_MAGIC;
+    response.hdr.abi_major = DRVLITE_ABI_MAJOR;
+    response.hdr.abi_minor = DRVLITE_ABI_MINOR;
+    response.hdr.op = DRVLITE_OP_QUERY_INFO;
+    response.hdr.size = sizeof(response);
+    std::vector<u8> bytes(sizeof(response));
+    std::memcpy(bytes.data(), &response, sizeof(response));
+    EXPECT_EQ(codec_code::bad_op,
+              check_reply(bytes.data(), static_cast<u32>(bytes.size()),
+                          DRVLITE_OP_MODULE_LIST, sizeof(response))
+                  .code);
+    auto* header = reinterpret_cast<drvlite_rsp_header*>(bytes.data());
+    header->size = sizeof(response) - 8;
+    EXPECT_EQ(codec_code::bad_size,
+              check_reply(bytes.data(), static_cast<u32>(bytes.size()),
+                          DRVLITE_OP_QUERY_INFO, sizeof(response))
+                  .code);
+    EXPECT_EQ(
+        codec_code::too_small,
+        check_reply(bytes.data(), 8, DRVLITE_OP_QUERY_INFO, sizeof(response))
+            .code);
+}
+
 }  // namespace

@@ -180,8 +180,15 @@ $list = Invoke-Bv @("list", "--json") 30
 $exists = $list.ExitCode -eq 0 -and $list.Output -match [regex]::Escape("""name"": ""$Vm""")
 if (-not $exists) {
     Log "=== creating VM $Vm"
-    $create = Invoke-Bv @("create", $Vm) 240
-    if ($create.ExitCode -ne 0) { throw "VM create failed: $($create.Output)" }
+    $create = Invoke-Bv @("create", $Vm) 420
+    if ($create.ExitCode -ne 0) {
+        # bvmenv may report a timeout after the VM was already created and
+        # started; re-list before giving up.
+        $rel = Invoke-Bv @("list", "--json") 30
+        $created = $rel.ExitCode -eq 0 -and $rel.Output -match [regex]::Escape("""name"": ""$Vm""")
+        if (-not $created) { throw "VM create failed: $($create.Output)" }
+        Log "warning: create reported failure but the VM exists; continuing"
+    }
 } else {
     if ($Reuse) {
         Log "=== reusing running VM $Vm (no reset)"
@@ -221,7 +228,7 @@ foreach ($name in $required) {
 Push (Join-Path $RepoRoot "docs\e2e.md") "$GuestDir\e2e.md"
 
 Run-Case "mapper_service_install" {
-    Guest "sc stop DrvliteMapper >nul 2>&1 & sc delete DrvliteMapper >nul 2>&1" -Elevated | Out-Null
+    Guest "sc stop DrvliteMapper >nul 2>&1 & sc delete DrvliteMapper >nul 2>&1 & exit /b 0" -Elevated | Out-Null
     $signedWith = "spc-signer"
     try {
         Guest "set DRVLITE_ALLOW_KERNEL_LIVE=1 && sc create DrvliteMapper type= kernel binPath= $GuestDir\drvlite-mapper.sys && sc start DrvliteMapper" -Elevated | Out-Null
@@ -233,7 +240,7 @@ Run-Case "mapper_service_install" {
         & $certScript -Files (Join-Path $BuildDir "drvlite-mapper.sys") | Out-Null
         Push (Join-Path $RepoRoot "build\test-certs\drvlite-test.cer") "$GuestDir\drvlite-test.cer"
         Guest "certutil -addstore -f Root $GuestDir\drvlite-test.cer && certutil -addstore -f TrustedPublisher $GuestDir\drvlite-test.cer" -Elevated | Out-Null
-        Guest "sc stop DrvliteMapper >nul 2>&1 & sc delete DrvliteMapper >nul 2>&1" -Elevated | Out-Null
+        Guest "sc stop DrvliteMapper >nul 2>&1 & sc delete DrvliteMapper >nul 2>&1 & exit /b 0" -Elevated | Out-Null
         Guest "set DRVLITE_ALLOW_KERNEL_LIVE=1 && sc create DrvliteMapper type= kernel binPath= $GuestDir\drvlite-mapper.sys && sc start DrvliteMapper" -Elevated | Out-Null
     }
     Guest "sc query DrvliteMapper | findstr RUNNING" -Elevated | Out-Null
@@ -244,7 +251,7 @@ Run-Case "mapper_service_install" {
 # 3. target process
 # ---------------------------------------------------------------------------
 Run-Case "target_process_start" {
-    Guest "del $GuestDir\target.json >nul 2>&1 & del $GuestDir\target-changed.txt >nul 2>&1" -Elevated | Out-Null
+    Guest "del $GuestDir\target.json >nul 2>&1 & del $GuestDir\target-changed.txt >nul 2>&1 & exit /b 0" -Elevated | Out-Null
     Guest "start /b $GuestDir\drvlite-target.exe --out $GuestDir\target.json --changed $GuestDir\target-changed.txt --seconds 1800" -Elevated | Out-Null
     for ($attempt = 0; $attempt -lt 20; ++$attempt) {
         Start-Sleep -Seconds 2
@@ -320,13 +327,13 @@ Run-Case "dse_disable_load_unsigned" {
     $baseline = $null
     try { Guest "set DRVLITE_ALLOW_KERNEL_LIVE=1 && sc create DrvliteUnsigned type= kernel binPath= $GuestDir\drvlite-unsigned.sys && sc start DrvliteUnsigned" -Elevated | Out-Null; $baseline = "loaded" }
     catch { $baseline = "blocked" }
-    Guest "sc stop DrvliteUnsigned >nul 2>&1 & sc delete DrvliteUnsigned >nul 2>&1" -Elevated | Out-Null
+    Guest "sc stop DrvliteUnsigned >nul 2>&1 & sc delete DrvliteUnsigned >nul 2>&1 & exit /b 0" -Elevated | Out-Null
     $dse = Run-Cli "dse"
     if ($dse -notmatch "supported : yes") { throw "DSE resolver unsupported: $dse" }
     Run-Cli "dse --disable" | Out-Null
     Guest "set DRVLITE_ALLOW_KERNEL_LIVE=1 && sc create DrvliteUnsigned type= kernel binPath= $GuestDir\drvlite-unsigned.sys && sc start DrvliteUnsigned" -Elevated | Out-Null
     $loaded = Guest "sc query DrvliteUnsigned | findstr RUNNING" -Elevated
-    Guest "sc stop DrvliteUnsigned >nul 2>&1 & sc delete DrvliteUnsigned >nul 2>&1" -Elevated | Out-Null
+    Guest "sc stop DrvliteUnsigned >nul 2>&1 & sc delete DrvliteUnsigned >nul 2>&1 & exit /b 0" -Elevated | Out-Null
     Run-Cli "dse --restore" | Out-Null
     if ($baseline -eq "loaded") { throw "unsigned driver loaded before the DSE patch; baseline is not enforcing DSE" }
     return "baseline=blocked patched=loaded restored=blocked"
@@ -387,7 +394,7 @@ Run-Case "dse_concurrent_load" {
 }
 
 Run-Case "handle_protected_process" {
-    $task = Guest ('tasklist /fi "imagename eq MsMpEng.exe" /fo csv /nh') -Elevated
+    $task = Guest ('tasklist /fi "imagename eq MsMpEng.exe" /fo csv /nh & exit /b 0') -Elevated
     $match = [regex]::Match($task, '"MsMpEng.exe","(\d+)"')
     if (-not $match.Success) {
         return "skipped: no PPL/AV process present in the guest"
@@ -426,7 +433,7 @@ Run-Case "shutdown_restore" {
 }
 
 Run-Case "trace_scan" {
-    $scan = Guest "sc query DrvliteMapper | findstr RUNNING & reg query HKLM\SYSTEM\CurrentControlSet\Services\Drvlite /s 2>nul & reg query HKLM\SYSTEM\CurrentControlSet\Services\drvlite-lite /s 2>nul & driverquery /v | findstr /i drvlite" -Elevated
+    $scan = Guest "sc query DrvliteMapper | findstr RUNNING & reg query HKLM\SYSTEM\CurrentControlSet\Services\Drvlite /s 2>nul & reg query HKLM\SYSTEM\CurrentControlSet\Services\drvlite-lite /s 2>nul & driverquery /v | findstr /i drvlite & exit /b 0" -Elevated
     if ($scan -match "drvlite\.sys") { throw "mapped driver appears in driverquery: $scan" }
     return "no drvlite service/registry trace (mapper harness excluded)"
 }
