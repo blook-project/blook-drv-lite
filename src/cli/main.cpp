@@ -292,7 +292,7 @@ int usage() {
         "    hook install|status|remove|hide --pid <pid>|shield --pid <pid> "
         "--ssn <n>\n"
         "    memtest <pid> <buffer>\n"
-        "    hook-test [ssn...] | hook-shutdown-test\n"
+        "    hook-test [ssn...] | hook-shutdown-test | hook-probe\n"
         "    dse-load-test <unsigned.sys> [iterations]\n"
         "    shutdown\n"
         "    version\n\n"
@@ -854,6 +854,88 @@ int run_command(drvlite::session& session, int argc, char** argv,
         std::printf("stress: %u iterations, %u failures\n", iterations,
                     failures);
         return failures == 0 ? 0 : 1;
+    }
+    if (command == "hook-probe") {
+        /* Mirrors infinity_probe_record in src/driver/hook/infinity.h. */
+        struct probe_record {
+            uint32_t magic;
+            uint32_t flags;
+            uint64_t kernel_base;
+            uint64_t lstar[8];
+            uint32_t processor_count;
+            uint32_t prefix_match;
+            uint32_t p1_offset;
+            uint32_t p1_count;
+            uint32_t p2_offset;
+            uint32_t p2_count;
+            uint32_t p2_modrm;
+            uint32_t reserved;
+            uint32_t jmp_offset;
+            uint32_t jmp_ok;
+            uint64_t jmp_target;
+            uint8_t entry_bytes[512];
+        };
+        static_assert(sizeof(probe_record) == 640, "probe record layout");
+
+        drvlite::device_info info{};
+        if (session.query_info(&info) != DRVLITE_OK || info.test_page_va == 0) {
+            print_status("hook_probe_info", DRVLITE_ERR_NOT_FOUND);
+            return 1;
+        }
+        drvlite::hook_status status{};
+        const int probe_status = session.infinity_status(&status);
+        if (probe_status != DRVLITE_OK) {
+            print_status("hook_probe_status", probe_status);
+            return 1;
+        }
+        uint8_t raw[0x100] = {};
+        const int read_status =
+            session.read_kernel(info.test_page_va + 0x200, raw, sizeof(raw));
+        if (read_status != DRVLITE_OK) {
+            print_status("hook_probe_read", read_status);
+            return 1;
+        }
+        probe_record record{};
+        std::memcpy(&record, raw, sizeof(record));
+        if (record.magic != 0x48425250u) {
+            std::printf("hook-probe: probe magic missing (0x%x)\n",
+                        record.magic);
+            return 1;
+        }
+        std::printf("probe: kernel_base=%s cpus=%u lstar0=%s all_equal=%u\n",
+                    hex_u64(record.kernel_base).c_str(), record.processor_count,
+                    hex_u64(record.lstar[0]).c_str(), record.flags & 0x1u);
+        std::printf("probe: executed=%u cur_cpu=%u cur_lstar=%s\n",
+                    record.reserved, record.p2_modrm,
+                    hex_u64(record.lstar[7]).c_str());
+        std::printf(
+            "probe: swapgs=%u prefix=%u/%u p1=@0x%x x%u p2=@0x%x "
+            "modrm=0x%02x x%u\n",
+            (record.flags >> 2) & 1u, record.prefix_match, 21u,
+            record.p1_offset, record.p1_count, record.p2_offset,
+            record.p2_modrm, record.p2_count);
+        std::printf("probe: ntos_dispatch count=%u ok=%u va=%s\n",
+                    record.jmp_offset, record.jmp_ok,
+                    hex_u64(record.jmp_target).c_str());
+        std::printf("probe: entry:");
+        for (uint32_t index = 0; index < 96; ++index) {
+            std::printf(" %02x", record.entry_bytes[index]);
+        }
+        std::printf("\n");
+
+        const int install_status = session.infinity_install({});
+        drvlite::hook_status after{};
+        session.infinity_status(&after);
+        std::printf("hook-probe: install=%s error=0x%x\n",
+                    install_status == DRVLITE_OK ? "ok" : "unsupported",
+                    after.flags);
+        if (install_status == DRVLITE_OK) {
+            std::printf("hook-probe: installed entry=%s syscalls=%llu\n",
+                        hex_u64(after.entry).c_str(),
+                        static_cast<unsigned long long>(after.total_syscalls));
+            session.infinity_remove();
+        }
+        return install_status == DRVLITE_OK ? 0 : 1;
     }
     if (command == "hook-test") {
         std::vector<uint32_t> filter;

@@ -1,0 +1,8 @@
+win-x64 26100 KVA-shadow guest, vm-drv-lite, drvlite 1.0.3+probe build:
+
+probe: kernel_base=0xfffff800d2a00000 cpus=4 lstar0=0xfffff800d30b5240 all_equal=0
+probe: executed=4 cur_cpu=0 cur_lstar=0xfffff800d30b5240
+probe: swapgs=1 prefix=21/21 p1=@0x1 x0 p2=@0xd30b5240 modrm=0x00 x4294965248
+probe: ntos_dispatch count=3 ok=1 va=0xfffff800d30b5750
+probe: entry: 0f 01 f8 65 48 89 24 25 10 00 00 00 65 48 8b 24 25 a8 01 00 00 6a 2b 65 ff 34 25 10 00 00 00 41 53 6a 33 51 65 48 8b 0c 25 28 9d 00 00 48 85 c9 74 0c f3 0f 01 e8 f3 0f 01 29 f3 0f 01 ea 49 8b ca 48 83 ec 08 55 48 81 ec 58 01 00 00 48 8d ac 24 80 00 00 00 48 89 9d c0 00 00 00 48 89 bd c8
+hook-probe: install=unsupported error=0x10

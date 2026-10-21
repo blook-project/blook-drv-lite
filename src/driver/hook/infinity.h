@@ -49,6 +49,36 @@ static_assert(offsetof(syscall_probe_context, handled) == 0x38,
 static_assert(offsetof(syscall_probe_context, status) == 0x3C,
               "probe context status offset");
 
+/* Diagnostic record written into the diagnostic page by
+ * infinity_probe_fill(); the CLI `hook-probe` command reads it back to
+ * explain why install is (un)supported on this kernel. Keep the layout
+ * stable; it is only consumed by the CLI. */
+struct infinity_probe_record {
+    u32 magic; /* 'PRBH' */
+    u32 flags; /* bit0 swapgs, bit1 prefix21, bit2 p1, bit3 p2 */
+    u64 kernel_base;
+    u64 lstar[8];
+    u32 processor_count;
+    u32 prefix_match; /* bytes of kEntryPrefix matched */
+    u32 p1_offset;    /* first "mov rax,r10; call rax" offset */
+    u32 p1_count;
+    u32 p2_offset; /* first "mov rax,r10; call r/m" variant offset */
+    u32 p2_count;
+    u32 p2_modrm; /* modrm byte of the first variant */
+    u32 reserved;
+    u32 jmp_offset; /* first E9 rel32 in the entry window */
+    u32 jmp_ok;
+    u64 jmp_target;
+    u8 entry_bytes[512];
+};
+static_assert(sizeof(infinity_probe_record) == 640, "probe record layout");
+
+constexpr u32 kInfinityProbeMagic = 0x48425250u; /* 'PRBH' */
+
+/* Fills `buffer` with an infinity_probe_record; used by the status opcode so
+ * the CLI can diagnose unsupported syscall-entry layouts. */
+void infinity_probe_fill(void* buffer, usize capacity);
+
 bool infinity_install(const u32* ssn_filter, u32 filter_count);
 
 bool infinity_remove();

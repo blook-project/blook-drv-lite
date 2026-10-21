@@ -16,7 +16,9 @@ constexpr u32 kLstarMsr = 0xC0000082;
 
 u32 active_processor_count();
 
-bool read_msr_all_cpus(u32 msr, u64* values, u32 capacity);
+bool read_msr_all_cpus(u32 msr, u64* values, u32 capacity,
+                       u32* executed = nullptr, u32* debug_processor = nullptr,
+                       u64* debug_value = nullptr);
 
 bool write_msr_all_cpus(u32 msr, u64 value);
 

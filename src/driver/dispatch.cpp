@@ -518,6 +518,11 @@ kc_status infinity_status_op(const void* input, u32 input_length, void* output,
     }
     auto* response = static_cast<drvlite_infinity_status_rsp*>(output);
     RtlZeroMemory(response, need);
+    /* Diagnostics for the CLI hook-probe: record the syscall entry layout in
+     * the diagnostic page (offset 0x200, past the physical-test area). */
+    if (state().test_page != nullptr) {
+        infinity_probe_fill(static_cast<u8*>(state().test_page) + 0x200, 0x300);
+    }
     infinity_fill_status(response);
     return finish(output, output_length, DRVLITE_OP_INFINITY_STATUS, need,
                   DRVLITE_OK);

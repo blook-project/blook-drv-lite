@@ -12,6 +12,10 @@ struct msr_broadcast {
     const u64* per_cpu_values;
     u64 values[kMaxProcessors];
     volatile LONG executed;
+    /* Diagnostics for the hook-probe: last raw read and cpu that saw it. */
+    volatile LONG debug_seen;
+    u32 debug_processor;
+    u64 debug_value;
 };
 
 ULONG_PTR NTAPI msr_callback(ULONG_PTR context) {
@@ -28,9 +32,15 @@ ULONG_PTR NTAPI msr_callback(ULONG_PTR context) {
          * stream on this processor. */
         int registers[4] = {};
         __cpuid(registers, 0);
-    } else if (processor < broadcast->capacity) {
-        broadcast->values[processor] = __readmsr(broadcast->msr);
+    } else {
+        const u64 raw = __readmsr(broadcast->msr);
+        broadcast->debug_value = raw;
+        broadcast->debug_processor = processor;
+        if (processor < broadcast->capacity) {
+            broadcast->values[processor] = raw;
+        }
     }
+    InterlockedIncrement(&broadcast->debug_seen);
     InterlockedIncrement(&broadcast->executed);
     return 0;
 }
@@ -45,7 +55,8 @@ u32 active_processor_count() {
     return static_cast<u32>(count);
 }
 
-bool read_msr_all_cpus(u32 msr, u64* values, u32 capacity) {
+bool read_msr_all_cpus(u32 msr, u64* values, u32 capacity, u32* executed,
+                       u32* debug_processor, u64* debug_value) {
     if (values == nullptr || capacity == 0 || capacity > kMaxProcessors) {
         return false;
     }
@@ -59,6 +70,15 @@ bool read_msr_all_cpus(u32 msr, u64* values, u32 capacity) {
     const ULONG_PTR result = KeIpiGenericCall(
         &msr_callback, reinterpret_cast<ULONG_PTR>(&broadcast));
     UNREFERENCED_PARAMETER(result);
+    if (executed != nullptr) {
+        *executed = static_cast<u32>(broadcast.executed);
+    }
+    if (debug_processor != nullptr) {
+        *debug_processor = broadcast.debug_processor;
+    }
+    if (debug_value != nullptr) {
+        *debug_value = broadcast.debug_value;
+    }
     return broadcast.executed != 0;
 }
 

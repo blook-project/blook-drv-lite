@@ -70,3 +70,15 @@ both modes by magic.
 screenshot, bench numbers). Cases that depend on features the guest build does
 not permit (InfinityHook under KVA shadow, DR visibility, unsigned-load baseline
 under test-signing) are recorded as `skip` with the reason, not as failures.
+
+## InfinityHook on KVA-shadow guests (26100)
+
+The reference 26100 guest runs with KVA shadow enabled: `IA32_LSTAR` points at
+`KiSystemCall64Shadow`, whose prologue matches the driver's prefix but does
+not contain the `mov rax, r10; call rax` dispatch (that lives in the shared
+entry at `LSTAR + 0x510`). `hook-probe` records this layout, and install
+fails closed with `DRVLITE_ERR_UNSUPPORTED`; e2e/CI therefore report
+`KVA-shadow platform` skips for the InfinityHook and DR-hiding cases.
+Findings and the disabled dispatch-hook prototype are documented in
+`docs/evidence/20261022-hook-probe/`. Non-shadow builds keep using the
+original entry-splice path.

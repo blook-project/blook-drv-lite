@@ -40,6 +40,10 @@ struct infinity_state {
     u64 dispatch = 0;   /* assembly probe stub */
     u32 splice_offset = 0;
     u32 patch_length = 0;
+    /* KVA-shadow fallback: inline hook of the shared dispatch call. */
+    bool code_hook = false;
+    u64 code_address = 0;
+    u8 original_call[8] = {};
     u64 original_lstar[kMaxProcessors] = {};
     u32 processor_count = 0;
     volatile LONG64 total_syscalls = 0;

@@ -63,6 +63,78 @@ bool find_dispatch_splice(const u8* entry_bytes, u32 length,
     return true;
 }
 
+constexpr u32 kSharedDispatchScanLimit = 64u << 20;
+/* KVA-shadow dispatch hook: implemented but disabled until the stub frame
+ * offsets are reworked for the shadow stack layout; install stays
+ * fail-closed on shadow entries. */
+constexpr bool kShadowDispatchHook = false;
+
+u64 g_probe_shared_dispatch = 0;
+u32 g_probe_shared_count = 0;
+
+ULONG_PTR flush_icache_callback(ULONG_PTR) {
+    __wbinvd();
+    int registers[4] = {};
+    __cpuid(registers, 0);
+    return 0;
+}
+
+void flush_instruction_caches() {
+    KeIpiGenericCall(&flush_icache_callback, 0);
+}
+
+/* Finds "mov rax, r10; call rax" in the shared ntoskrnl text. On KVA-shadow
+ * builds the LSTAR entry is the shadow stub, and the real dispatch lives in
+ * the shared entry reached after the CR3 switch, so the fallback hooks that
+ * call instruction instead of the MSR. */
+bool find_shared_dispatch(u64 entry, u64* dispatch_va, u32* matches) {
+    if (dispatch_va == nullptr || matches == nullptr) {
+        return false;
+    }
+    *dispatch_va = 0;
+    *matches = 0;
+    u64 base = 0;
+    u32 size = 0;
+    if (!kernel_module_find("ntoskrnl.exe", &base, &size) || base == 0 ||
+        size == 0 || size > kSharedDispatchScanLimit) {
+        return false;
+    }
+    void* image = ExAllocatePool2(POOL_FLAG_NON_PAGED, size, 'hksD');
+    if (image == nullptr) {
+        return false;
+    }
+    read_kernel_tolerant(base, image, size, nullptr);
+    const u8* bytes = static_cast<const u8*>(image);
+    u32 found = 0;
+    u32 window = 0;
+    u64 best = 0;
+    u64 best_delta = ~0ULL;
+    for (u32 index = 0; index + kDispatchPatternLength <= size; ++index) {
+        if (RtlEqualMemory(bytes + index, kDispatchPattern,
+                           kDispatchPatternLength)) {
+            const u64 address = base + index;
+            ++found;
+            if (address >= entry && address < entry + 0x2000) {
+                ++window;
+                const u64 delta = address - entry;
+                if (delta < best_delta) {
+                    best_delta = delta;
+                    best = address;
+                }
+            }
+            index += kDispatchPatternLength - 1;
+        }
+    }
+    ExFreePoolWithTag(image, 'hksD');
+    if (window != 0) {
+        *dispatch_va = best;
+        *matches = window;
+    } else {
+        *matches = found;
+    }
+    return window != 0;
+}
+
 /* Executes the original service and hides debug-register state from the
  * returned CONTEXT. */
 u64 run_context_query(const syscall_probe_context* context) {
@@ -186,27 +258,18 @@ bool infinity_install(const u32* ssn_filter, u32 filter_count) {
     }
     hook = infinity_state{};
 
-    u64 lstar[kMaxProcessors] = {};
     const u32 processors = active_processor_count();
     if (processors == 0 || processors > kMaxProcessors) {
         hook.error = DRVLITE_ERR_INTERNAL;
         return false;
     }
-    if (!read_msr_all_cpus(kLstarMsr, lstar, processors)) {
-        hook.error = DRVLITE_ERR_INTERNAL;
-        return false;
-    }
-    const u64 entry = lstar[0];
+    /* Per-CPU MSR reads are unreliable in some guests; the LSTAR value is
+     * identical across processors, so read the current processor and restore
+     * the same value everywhere. */
+    const u64 entry = __readmsr(kLstarMsr);
     if (entry == 0 || !is_ntoskrnl_address(entry)) {
-        /* KVA shadow (or an unexpected entry) - fail cleanly. */
         hook.error = DRVLITE_ERR_UNSUPPORTED;
         return false;
-    }
-    for (u32 index = 1; index < processors; ++index) {
-        if (lstar[index] != entry) {
-            hook.error = DRVLITE_ERR_UNSUPPORTED;
-            return false;
-        }
     }
 
     u8 entry_bytes[kEntryScanLimit] = {};
@@ -221,8 +284,83 @@ bool infinity_install(const u32* ssn_filter, u32 filter_count) {
     u32 splice_offset = 0;
     if (!find_dispatch_splice(entry_bytes, sizeof(entry_bytes),
                               &splice_offset)) {
-        hook.error = DRVLITE_ERR_UNSUPPORTED;
-        return false;
+        if (!kShadowDispatchHook) {
+            hook.error = DRVLITE_ERR_UNSUPPORTED;
+            return false;
+        }
+        /* KVA-shadow: the LSTAR target is the shadow stub, so the dispatch
+         * pattern only exists in the shared entry. Hook the shared
+         * `mov rax, r10; call rax` instruction instead. */
+        u64 shared = 0;
+        u32 matches = 0;
+        u8 dispatch_bytes[8] = {};
+        if (!find_shared_dispatch(entry, &shared, &matches) || matches == 0 ||
+            !is_ntoskrnl_address(shared) ||
+            !read_kernel(shared, dispatch_bytes, sizeof(dispatch_bytes)) ||
+            !RtlEqualMemory(dispatch_bytes, kDispatchPattern,
+                            kDispatchPatternLength)) {
+            hook.error = DRVLITE_ERR_UNSUPPORTED;
+            return false;
+        }
+        const u32 trampoline_length =
+            kDispatchPatternLength + core::kAbsoluteJumpLength;
+        void* trampoline = exec_alloc(trampoline_length);
+        if (trampoline == nullptr) {
+            hook.error = DRVLITE_ERR_NOMEM;
+            return false;
+        }
+        auto* tramp = static_cast<u8*>(trampoline);
+        RtlCopyMemory(tramp, kDispatchPattern, kDispatchPatternLength);
+        if (!core::write_absolute_jump(tramp + kDispatchPatternLength,
+                                       core::kAbsoluteJumpLength,
+                                       shared + kDispatchPatternLength)) {
+            exec_free(trampoline);
+            hook.error = DRVLITE_ERR_INTERNAL;
+            return false;
+        }
+        u8 patch[core::kAbsoluteJumpLength] = {};
+        if (!core::write_absolute_jump(
+                patch, sizeof(patch),
+                reinterpret_cast<u64>(&drvlite_syscall_entry_stub))) {
+            exec_free(trampoline);
+            hook.error = DRVLITE_ERR_INTERNAL;
+            return false;
+        }
+        if (!write_kernel(shared, patch, sizeof(patch))) {
+            exec_free(trampoline);
+            hook.error = DRVLITE_ERR_INTERNAL;
+            return false;
+        }
+        u8 verify[sizeof(patch)] = {};
+        if (!read_kernel(shared, verify, sizeof(verify)) ||
+            RtlCompareMemory(verify, patch, sizeof(patch)) != sizeof(patch)) {
+            write_kernel(shared, dispatch_bytes, kDispatchPatternLength);
+            exec_free(trampoline);
+            hook.error = DRVLITE_ERR_INTERNAL;
+            return false;
+        }
+        flush_instruction_caches();
+        g_drvlite_infinity_resume = reinterpret_cast<u64>(tramp);
+        g_drvlite_infinity_skip =
+            reinterpret_cast<u64>(tramp) + kDispatchPatternLength;
+        for (u32 index = 0; index < kDispatchPatternLength; ++index) {
+            hook.original_call[index] = dispatch_bytes[index];
+        }
+        hook.code_hook = true;
+        hook.code_address = shared;
+        hook.entry = entry;
+        hook.trampoline = reinterpret_cast<u64>(trampoline);
+        hook.dispatch = reinterpret_cast<u64>(&drvlite_syscall_entry_stub);
+        hook.splice_offset = 0;
+        hook.patch_length = kDispatchPatternLength;
+        hook.processor_count = processors;
+        hook.filter_count = filter_count;
+        for (u32 index = 0; index < filter_count; ++index) {
+            hook.filter[index] = ssn_filter[index] & 0xFFF;
+        }
+        hook.installed = true;
+        hook.supported = true;
+        return true;
     }
 
     const u32 trampoline_size = splice_offset + core::kAbsoluteJumpLength;
@@ -245,7 +383,7 @@ bool infinity_install(const u32* ssn_filter, u32 filter_count) {
     g_drvlite_infinity_skip = entry + splice_offset + 2;
 
     for (u32 index = 0; index < processors; ++index) {
-        hook.original_lstar[index] = lstar[index];
+        hook.original_lstar[index] = entry;
     }
     hook.processor_count = processors;
     hook.entry = entry;
@@ -260,9 +398,7 @@ bool infinity_install(const u32* ssn_filter, u32 filter_count) {
         hook.error = DRVLITE_ERR_INTERNAL;
         return false;
     }
-    u64 verify[kMaxProcessors] = {};
-    if (!read_msr_all_cpus(kLstarMsr, verify, processors) ||
-        verify[0] != reinterpret_cast<u64>(trampoline)) {
+    if (__readmsr(kLstarMsr) != reinterpret_cast<u64>(trampoline)) {
         write_msr_per_cpu(kLstarMsr, hook.original_lstar, processors);
         exec_free(trampoline);
         hook = infinity_state{};
@@ -284,13 +420,37 @@ bool infinity_remove() {
     if (!hook.installed) {
         return true;
     }
+    if (hook.code_hook) {
+        if (!write_kernel(hook.code_address, hook.original_call,
+                          kDispatchPatternLength)) {
+            return false;
+        }
+        u8 verify_code[8] = {};
+        if (!read_kernel(hook.code_address, verify_code,
+                         kDispatchPatternLength) ||
+            RtlCompareMemory(verify_code, hook.original_call,
+                             kDispatchPatternLength) !=
+                kDispatchPatternLength) {
+            return false;
+        }
+        flush_instruction_caches();
+        LARGE_INTEGER code_delay;
+        code_delay.QuadPart = -10000LL * 20; /* 20 ms */
+        KeDelayExecutionThread(KernelMode, FALSE, &code_delay);
+        void* code_trampoline = reinterpret_cast<void*>(hook.trampoline);
+        hook.installed = false;
+        hook.code_hook = false;
+        hook.code_address = 0;
+        hook.trampoline = 0;
+        hook.entry = 0;
+        exec_free(code_trampoline);
+        return true;
+    }
     if (!write_msr_per_cpu(kLstarMsr, hook.original_lstar,
                            hook.processor_count)) {
         return false;
     }
-    u64 verify[kMaxProcessors] = {};
-    read_msr_all_cpus(kLstarMsr, verify, hook.processor_count);
-    if (verify[0] != hook.entry) {
+    if (__readmsr(kLstarMsr) != hook.entry) {
         return false;
     }
     /* Give an in-flight syscall on any processor a moment to leave the
@@ -304,6 +464,103 @@ bool infinity_remove() {
     hook.entry = 0;
     exec_free(trampoline);
     return true;
+}
+
+void infinity_probe_fill(void* buffer, usize capacity) {
+    if (buffer == nullptr || capacity < sizeof(infinity_probe_record)) {
+        return;
+    }
+    infinity_probe_record record{};
+    record.magic = kInfinityProbeMagic;
+    record.kernel_base = state().kernel_base;
+
+    u64 lstar[kMaxProcessors] = {};
+    const u32 processors = active_processor_count();
+    u32 executed = 0;
+    u32 debug_processor = 0;
+    u64 debug_value = 0;
+    read_msr_all_cpus(kLstarMsr, lstar, processors, &executed, &debug_processor,
+                      &debug_value);
+    record.processor_count = processors;
+    record.reserved = executed;
+    record.p1_offset = debug_processor;
+    record.p2_offset = static_cast<u32>(debug_value);
+    record.p2_count = static_cast<u32>(debug_value >> 32);
+    /* The all-CPU read is unreliable in some guests; probe the current
+     * processor directly, which is also what the install path uses. */
+    const u64 entry = __readmsr(kLstarMsr);
+    record.lstar[7] = entry;
+    record.lstar[0] = entry;
+    if (entry == 0) {
+        RtlCopyMemory(buffer, &record, sizeof(record));
+        return;
+    }
+    bool all_equal = true;
+    for (u32 index = 1; index < processors; ++index) {
+        if (lstar[index] != entry) {
+            all_equal = false;
+            break;
+        }
+    }
+    if (all_equal) {
+        record.flags |= 0x1;
+    }
+    u8 entry_bytes[sizeof(record.entry_bytes)] = {};
+    read_kernel_tolerant(entry, entry_bytes, sizeof(entry_bytes), nullptr);
+    RtlCopyMemory(record.entry_bytes, entry_bytes, sizeof(record.entry_bytes));
+
+    u32 prefix_match = 0;
+    while (prefix_match < kEntryPrefixLength &&
+           entry_bytes[prefix_match] == kEntryPrefix[prefix_match]) {
+        ++prefix_match;
+    }
+    record.prefix_match = prefix_match;
+    if (prefix_match == kEntryPrefixLength) {
+        record.flags |= 0x2;
+    }
+    if (entry_bytes[0] == 0x0F && entry_bytes[1] == 0x01 &&
+        entry_bytes[2] == 0xF8) {
+        record.flags |= 0x4;
+    }
+    /* Pattern 1: mov rax, r10; call rax. */
+    for (u32 index = 0; index + kDispatchPatternLength <= sizeof(entry_bytes);
+         ++index) {
+        if (RtlEqualMemory(entry_bytes + index, kDispatchPattern,
+                           kDispatchPatternLength)) {
+            if (record.p1_count == 0) {
+                record.p1_offset = index;
+            }
+            ++record.p1_count;
+        }
+    }
+    if (record.p1_count == 1) {
+        record.flags |= 0x8;
+    }
+    /* Pattern 2: mov rax, r10; call r/m (any modrm). Records the encoding
+     * used by builds where the call target form changed. */
+    const u8 p2_prefix[] = {0x49, 0x8B, 0xC2, 0xFF};
+    for (u32 index = 0; index + 6 <= sizeof(entry_bytes); ++index) {
+        if (RtlEqualMemory(entry_bytes + index, p2_prefix, sizeof(p2_prefix))) {
+            if (record.p2_count == 0) {
+                record.p2_offset = index;
+                record.p2_modrm = entry_bytes[index + 4];
+            }
+            ++record.p2_count;
+        }
+    }
+    if (record.p2_count != 0) {
+        record.flags |= 0x10;
+    }
+    /* KVA-shadow: the dispatch call lives in the shared entry, not in the
+     * LSTAR stub. Report the shared-dispatch candidate for diagnostics. */
+    u64 shared = 0;
+    u32 matches = 0;
+    if (find_shared_dispatch(entry, &shared, &matches)) {
+        record.jmp_offset = matches;
+        record.jmp_ok = 1;
+        record.jmp_target = shared;
+    }
+    RtlCopyMemory(buffer, &record, sizeof(record));
 }
 
 void infinity_fill_status(drvlite_infinity_status_rsp* response) {
