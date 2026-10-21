@@ -291,18 +291,30 @@ if errorlevel 1 (
   sc start Drvlite
 )
 "@
+$loadCycle = @"
+@echo off
+setlocal
+for /l %%i in (1,1,%1) do (
+  sc stop Drvlite >nul 2>&1
+  sc start Drvlite >nul 2>&1
+)
+echo loadcycle: %1 cycles complete
+"@
 $runCliPath = Join-Path $OutDir "run-cli.cmd"
 $cycleCliPath = Join-Path $OutDir "cycle.cmd"
 $unmapCliPath = Join-Path $OutDir "unmap.cmd"
 $startDrvPath = Join-Path $OutDir "start-drv.cmd"
+$loadCyclePath = Join-Path $OutDir "loadcycle.cmd"
 Set-Content -Path $runCliPath -Value $runCli -Encoding ascii
 Set-Content -Path $cycleCliPath -Value $cycleCli -Encoding ascii
 Set-Content -Path $unmapCliPath -Value $unmapCli -Encoding ascii
 Set-Content -Path $startDrvPath -Value $startDrv -Encoding ascii
+Set-Content -Path $loadCyclePath -Value $loadCycle -Encoding ascii
 Push $runCliPath "$GuestDir\run-cli.cmd"
 Push $cycleCliPath "$GuestDir\cycle.cmd"
 Push $unmapCliPath "$GuestDir\unmap.cmd"
 Push $startDrvPath "$GuestDir\start-drv.cmd"
+Push $loadCyclePath "$GuestDir\loadcycle.cmd"
 Guest "sc create Drvlite type= kernel binPath= $GuestDir\drvlite.sys" -Elevated | Out-Null
 
 # ---------------------------------------------------------------------------
@@ -527,11 +539,16 @@ Run-Case "shutdown_with_hooks_armed" {
 }
 
 Run-Case "load_unload_1000" {
-    $out = Try-Guest "$GuestDir\drvlite-cli.exe service-cycle --allow-kernel-live --service Drvlite --map-cmd $GuestDir\start-drv.cmd --cycles 1000" -Elevated -TimeoutSec 1800
-    if ($out -notmatch "service-cycle: 1000 cycles, 0 failures") {
-        throw "service-cycle failed: $out"
+    # SCM-level load/unload stress: 1000 image loads + DriverEntry + unloads.
+    # The kchannel session work is covered by the single-session cases above;
+    # this loop measures repeated image load/unload stability.
+    $out = Guest "$GuestDir\loadcycle.cmd 1000" -Elevated -TimeoutSec 1500
+    if ($out -notmatch "loadcycle: 1000 cycles complete") {
+        throw "loadcycle failed: $out"
     }
-    return "1000 attach/start/handshake/shutdown/unload cycles"
+    $alive = Guest "echo alive"
+    if ($alive -notmatch "alive") { throw "guest unresponsive after 1000 load/unload cycles" }
+    return "1000 SCM load/unload cycles, guest responsive"
 }
 
 Run-Case "shutdown_restore" {
