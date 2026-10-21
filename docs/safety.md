@@ -59,5 +59,5 @@ in `flags`.
   virtualization-level stealth. Anti-cheat/EDR with kernel visibility can
   still detect a mapped image.
 - The in-repo `drvlite-mapper.sys` is a **test harness** (device + IOCTL,
-  test-signed). Production mapping uses `blook-kdu` or another privileged
+  SPC-signed). Production mapping uses `blook-kdu` or another privileged
   loader; the mapper is never part of the shipped driver.
