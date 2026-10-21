@@ -80,12 +80,23 @@ dse_resolution scan_options_reference(const pe_image& image, u32 function_rva,
         const u8 modrm = data[offset + 1];
         u32 instruction_length = 0;
         u32 via = 0;
-        if (opcode == 0x89 && (modrm == 0x0D || modrm == 0x15)) {
-            instruction_length = 6; /* mov dword ptr [rip+disp32], rcx/rdx */
-            via = 1;
+        /* All RIP-relative forms use mod=00, rm=101 (modrm 0x05/0x0D/0x15/
+         * 0x1D); the displacement always starts at offset+2. Windows 10/11
+         * CipInitialize historically used rcx/rdx (0x0D/0x15); 26100 can use
+         * eax (0x05) or an OR-immediate form, so accept those too. */
+        if (opcode == 0x89 && (modrm == 0x05 || modrm == 0x0D ||
+                               modrm == 0x15 || modrm == 0x1D)) {
+            instruction_length = 6; /* mov dword ptr [rip+disp32], reg */
+            via = modrm == 0x05 ? 3 : 1;
         } else if (opcode == 0xC7 && modrm == 0x05) {
             instruction_length = 10; /* mov dword ptr [rip+disp32], imm32 */
             via = 2;
+        } else if (opcode == 0x83 && (modrm == 0x05 || modrm == 0x0D)) {
+            instruction_length = 7; /* or dword ptr [rip+disp32], imm8 */
+            via = 4;
+        } else if (opcode == 0x81 && (modrm == 0x05 || modrm == 0x0D)) {
+            instruction_length = 10; /* or dword ptr [rip+disp32], imm32 */
+            via = 5;
         } else {
             continue;
         }
