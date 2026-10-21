@@ -1,0 +1,57 @@
+{
+  "guest_queryable": true,
+  "hang": {
+    "samples": 1,
+    "suspected": false,
+    "unchanged_samples": 0
+  },
+  "ip": null,
+  "log": {
+    "issues": [
+      {
+        "level": "error",
+        "message": "2026-10-21T09:58:22.025Z -ERROR vmware-vmx.exe 6292 [ws@4413 threadName=\"vmx\"] DISKLIB-SPARSE: \"C:\\blook-vms\\vms\\vm-drv-lite\\blook-base-cl1-000001.vmdk\" : failed to open (The specified virtual disk needs repair (14)): Disk needs repair.",
+        "source": "vmware.log"
+      },
+      {
+        "level": "error",
+        "message": "2026-10-21T09:58:22.025Z -ERROR vmware-vmx.exe 6292 [ws@4413 threadName=\"vmx\"] DISKLIB-LINK  : DiskLinkOpen: Failed to open 'C:\\blook-vms\\vms\\vm-drv-lite\\blook-base-cl1-000001.vmdk': : The specified virtual disk needs repair",
+        "source": "vmware.log"
+      },
+      {
+        "level": "error",
+        "message": "2026-10-21T09:58:22.025Z -ERROR vmware-vmx.exe 6292 [ws@4413 threadName=\"vmx\"] DISKLIB-CHAIN : DiskChainOpen: \"C:\\blook-vms\\vms\\vm-drv-lite\\blook-base-cl1-000001.vmdk\": failed to open: The specified virtual disk needs repair.",
+        "source": "vmware.log"
+      },
+      {
+        "level": "warning",
+        "message": "2026-10-21T09:58:22.025Z -INFO vmware-vmx.exe 6292 [ws@4413 threadName=\"vmx\"] DISKLIB-LIB   : Failed to open 'C:\\blook-vms\\vms\\vm-drv-lite\\blook-base-cl1-000001.vmdk' with flags 0xa The specified virtual disk needs repair (14).",
+        "source": "vmware.log"
+      },
+      {
+        "level": "warning",
+        "message": "2026-10-21T09:58:22.069Z -INFO vmware-vmx.exe 6292 [ws@4413 threadName=\"vmx\"] DISKUTILWIN32: DiskUtilW32IsATASSDDevice: Failed to send ATA IDENTIFY command to the target device.",
+        "source": "vmware.log"
+      }
+    ]
+  },
+  "power": "on",
+  "sampled_at": "2026-10-21T10:09:42Z",
+  "schema": "bvmenv.state.v1",
+  "screen": {
+    "classification": "login",
+    "confidence": 0.75,
+    "ocr_text": "",
+    "reason": "dominant blue framebuffer with light text but a live guest (logon UI)",
+    "screenshot": "C:\\blook-vms\\_cache\\shots\\vm-drv-lite-20261021T100952Z.png",
+    "stop_code": null
+  },
+  "tools": {
+    "running": true,
+    "state": "running",
+    "version": "13313"
+  },
+  "uptime_seconds": null,
+  "vm": "vm-drv-lite",
+  "vmx": "C:\\blook-vms\\vms\\vm-drv-lite\\vm-drv-lite.vmx"
+}

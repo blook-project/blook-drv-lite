@@ -1,0 +1,158 @@
+{
+  "schema": "bvmenv.e2e.v1",
+  "run_id": "20261021T180953Z",
+  "version": "1.0.1",
+  "bvmenv_version": "bvmenv 0.1.12",
+  "vm": "vm-drv-lite",
+  "guest": {
+    "nt_build": "",
+    "drvlite_sys_size": 81416,
+    "mapper_signed": true
+  },
+  "cases": [
+    {
+      "name": "target_process_start",
+      "status": "pass",
+      "detail": "pid=7888 tid=2504 buffer=0x21ef6640000",
+      "duration_ms": 29687
+    },
+    {
+      "name": "target_process_second",
+      "status": "pass",
+      "detail": "pid=8088",
+      "duration_ms": 20857
+    },
+    {
+      "name": "manual_map_attach",
+      "status": "pass",
+      "detail": "nt build       : 26200; features       : 0x000003ff; driver base    : 0xfffff80235040000 (90112 bytes)",
+      "duration_ms": 5941
+    },
+    {
+      "name": "physical_read_write",
+      "status": "pass",
+      "detail": "diagnostic page roundtrip ok",
+      "duration_ms": 6190
+    },
+    {
+      "name": "kernel_read_write",
+      "status": "pass",
+      "detail": "ntoskrnl at 0xfffff8029ee00000, MZ verified",
+      "duration_ms": 12180
+    },
+    {
+      "name": "process_memory_cr3",
+      "status": "pass",
+      "detail": "pattern matched, wrote 43523321, target observed 0x21335243",
+      "duration_ms": 26745
+    },
+    {
+      "name": "process_module_list",
+      "status": "pass",
+      "detail": "ntdll listed",
+      "duration_ms": 6039
+    },
+    {
+      "name": "dse_disable_load_unsigned",
+      "status": "pass",
+      "detail": "test-signing guest allows unsigned load; DSE disable/restore verified by value",
+      "duration_ms": 59532
+    },
+    {
+      "name": "handle_full_access",
+      "status": "pass",
+      "detail": "terminated disposable process 8088 through full handle",
+      "duration_ms": 5738
+    },
+    {
+      "name": "infinityhook_counters",
+      "status": "skip",
+      "detail": "skip: InfinityHook entry pattern unsupported on this guest build (documented platform gate)",
+      "duration_ms": 14534
+    },
+    {
+      "name": "hwbp_detection_bypass",
+      "status": "skip",
+      "detail": "skip: the guest does not expose debug registers through GetThreadContext, so hiding cannot be observed",
+      "duration_ms": 8676
+    },
+    {
+      "name": "negative_input_fuzz",
+      "status": "pass",
+      "detail": "malformed requests rejected, driver alive",
+      "duration_ms": 7018
+    },
+    {
+      "name": "stress_memory_ops",
+      "status": "pass",
+      "detail": "1000 mixed operations, 0 failures",
+      "duration_ms": 7010
+    },
+    {
+      "name": "perf_benchmark",
+      "status": "pass",
+      "detail": "phys-read-4k             median=   70.10 us  p99=61875.00 us      55.7 MiB/s  failures=0; kernel-read-4k           median=  271.60 us  p99=62597.00 us      14.4 MiB/s  failures=0; process-read-4k          median=  100.20 us  p99=61775.20 us      39.0 MiB/s  failures=0; process-write-4k         median=30948.50 us  p99=62227.60 us       0.1 MiB/s  failures=0; phys-write-4k            median=46223.40 us  p99=62493.70 us       0.1 MiB/s  failures=0",
+      "duration_ms": 26036
+    },
+    {
+      "name": "page_paths_and_crossings",
+      "status": "pass",
+      "detail": "4k crossing, non-present, non-canonical, 2m boundary and chunked kernel read ok",
+      "duration_ms": 6081
+    },
+    {
+      "name": "dse_concurrent_load",
+      "status": "skip",
+      "detail": "skip: guest test-signing requires a signed image; DSE value patch/restore is verified by dse_disable_load_unsigned",
+      "duration_ms": 8863
+    },
+    {
+      "name": "handle_protected_process",
+      "status": "pass",
+      "detail": "PPL process 3120: GrantedAccess raised to 0x1fffff; terminate blocked by PPL policy (expected on hardened AV)",
+      "duration_ms": 14941
+    },
+    {
+      "name": "shutdown_with_hooks_armed",
+      "status": "skip",
+      "detail": "skip: InfinityHook unsupported on this guest build (platform gate)",
+      "duration_ms": 8958
+    },
+    {
+      "name": "load_unload_1000",
+      "status": "pass",
+      "detail": "1000 SCM load/unload cycles, guest responsive",
+      "duration_ms": 50254
+    },
+    {
+      "name": "shutdown_restore",
+      "status": "pass",
+      "detail": "driver shut down, guest responsive",
+      "duration_ms": 13033
+    },
+    {
+      "name": "trace_scan",
+      "status": "pass",
+      "detail": "driver unloaded, no loader/mapped-image leftovers in the driver directory",
+      "duration_ms": 27097
+    },
+    {
+      "name": "load_unload_cycles",
+      "status": "pass",
+      "detail": "10/10 process-level map/shutdown/unmap cycles",
+      "duration_ms": 195004
+    }
+  ],
+  "pass": true,
+  "passed": 18,
+  "failed": 0,
+  "skipped": 4,
+  "artifacts": [
+    "result.json",
+    "cases.txt",
+    "state.json",
+    "screen.png",
+    "target.json",
+    "bench.txt"
+  ]
+}
