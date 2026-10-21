@@ -6,8 +6,13 @@
 #include "mem/modules.h"
 #include "util.h"
 
+#include <ntimage.h>
+
 extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT driver_object,
                                 PUNICODE_STRING registry_path);
+
+extern "C" PVOID NTAPI RtlPcToFileHeader(PVOID pc_value, PVOID* base_of_image);
+extern "C" PIMAGE_NT_HEADERS NTAPI RtlImageNtHeader(PVOID base);
 
 namespace drvlite {
 namespace {
@@ -26,15 +31,38 @@ NTSTATUS state_initialize(const kc_bootstrap* bootstrap) {
     KeInitializeSpinLock(&global.patch_lock);
     global.bootstrap = bootstrap;
     global.nt_build = nt_build_number();
-    global.driver_base =
-        image_base_from_pointer(reinterpret_cast<const void*>(&DriverEntry));
-    global.driver_size =
-        global.driver_base != 0 ? image_size_at(global.driver_base) : 0;
-    u64 kernel_base = 0;
-    u32 kernel_size = 0;
-    if (kernel_module_find("ntoskrnl.exe", &kernel_base, &kernel_size)) {
-        global.kernel_base = kernel_base;
-        global.kernel_size = kernel_size;
+    /* Resolve the image extent from the loader's module list entry instead of
+     * faulting pages of our own image during DriverEntry (that can recurse
+     * into the image section lock and deadlock under the SCM load). */
+    PVOID image_base = nullptr;
+    if (RtlPcToFileHeader(reinterpret_cast<PVOID>(&DriverEntry), &image_base) &&
+        image_base != nullptr) {
+        global.driver_base = reinterpret_cast<u64>(image_base);
+        __try {
+            const auto* headers = RtlImageNtHeader(image_base);
+            if (headers != nullptr) {
+                global.driver_size = headers->OptionalHeader.SizeOfImage;
+            }
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            global.driver_size = 0;
+        }
+    }
+    /* Same trick for ntoskrnl: resolve a known export, not a list walk. */
+    UNICODE_STRING routine_name;
+    RtlInitUnicodeString(&routine_name, L"PsLookupProcessByProcessId");
+    PVOID routine = MmGetSystemRoutineAddress(&routine_name);
+    PVOID kernel_image = nullptr;
+    if (routine != nullptr && RtlPcToFileHeader(routine, &kernel_image) &&
+        kernel_image != nullptr) {
+        global.kernel_base = reinterpret_cast<u64>(kernel_image);
+        __try {
+            const auto* headers = RtlImageNtHeader(kernel_image);
+            if (headers != nullptr) {
+                global.kernel_size = headers->OptionalHeader.SizeOfImage;
+            }
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            global.kernel_size = 0;
+        }
     }
     global.features = DRVLITE_FEATURE_PHYS_READ | DRVLITE_FEATURE_PHYS_WRITE |
                       DRVLITE_FEATURE_KERNEL_MEMORY |
@@ -46,20 +74,32 @@ NTSTATUS state_initialize(const kc_bootstrap* bootstrap) {
                             ? bootstrap->peer_pid
                             : static_cast<u32>(reinterpret_cast<ULONG_PTR>(
                                   PsGetCurrentProcessId()));
-    PEPROCESS client = nullptr;
-    if (NT_SUCCESS(PsLookupProcessByProcessId(ULongToHandle(global.client_pid),
-                                              &client)) &&
-        client != nullptr) {
-        global.client_process = client;
+    return STATUS_SUCCESS;
+}
+
+/* Process lookup and the diagnostic page are deferred to a PASSIVE system
+ * thread after DriverEntry returns: they are not needed to load and doing
+ * them while the service manager holds the load lock is unnecessary risk. */
+NTSTATUS state_deferred_initialize() {
+    driver_state& global = g_state;
+    if (global.client_process == nullptr && global.client_pid != 0) {
+        PEPROCESS client = nullptr;
+        if (NT_SUCCESS(PsLookupProcessByProcessId(
+                ULongToHandle(global.client_pid), &client)) &&
+            client != nullptr) {
+            global.client_process = client;
+        }
     }
-    /* Diagnostic page for the physical read/write e2e cases. */
-    void* test_page = ExAllocatePool2(POOL_FLAG_NON_PAGED, 0x1000, 'pdlD');
-    if (test_page != nullptr) {
-        RtlFillMemory(test_page, 0x1000, 0xCC);
-        RtlCopyMemory(test_page, "DRVLITE-PHYS", 12);
-        global.test_page = test_page;
-        const PHYSICAL_ADDRESS physical = MmGetPhysicalAddress(test_page);
-        global.test_page_pa = static_cast<u64>(physical.QuadPart) & ~0xFFFULL;
+    if (global.test_page == nullptr) {
+        void* test_page = ExAllocatePool2(POOL_FLAG_NON_PAGED, 0x1000, 'pdlD');
+        if (test_page != nullptr) {
+            RtlFillMemory(test_page, 0x1000, 0xCC);
+            RtlCopyMemory(test_page, "DRVLITE-PHYS", 12);
+            global.test_page = test_page;
+            const PHYSICAL_ADDRESS physical = MmGetPhysicalAddress(test_page);
+            global.test_page_pa =
+                static_cast<u64>(physical.QuadPart) & ~0xFFFULL;
+        }
     }
     return STATUS_SUCCESS;
 }

@@ -84,6 +84,8 @@ driver_state& state();
 
 /* Initialisation helpers used by DriverEntry. */
 NTSTATUS state_initialize(const kc_bootstrap* bootstrap);
+/* Deferred PASSIVE work: process lookup and the diagnostic page. */
+NTSTATUS state_deferred_initialize();
 void state_destroy();
 
 /*

@@ -1279,9 +1279,17 @@ bool write_registry_bootstrap(const char* service, const kc_bootstrap& boot) {
                         nullptr, &key, nullptr) != ERROR_SUCCESS) {
         return false;
     }
+    /* Service load: the kernel resolves the shared region in the peer
+     * process, so peer_pid must name this CLI process (a zero value means the
+     * current process, which during DriverEntry would be the system process).
+     */
+    kc_bootstrap stored = boot;
+    if (stored.peer_pid == 0) {
+        stored.peer_pid = GetCurrentProcessId();
+    }
     const LONG result =
         RegSetValueExA(key, "Bootstrap", 0, REG_BINARY,
-                       reinterpret_cast<const BYTE*>(&boot), sizeof(boot));
+                       reinterpret_cast<const BYTE*>(&stored), sizeof(stored));
     RegCloseKey(key);
     return result == ERROR_SUCCESS;
 }

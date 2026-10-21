@@ -11,6 +11,9 @@
 
 namespace drvlite {
 
+/* Last kchannel status observed by adapter_create/start (diagnostics). */
+extern u32 g_adapter_last_status;
+
 /* Creates the transport from the bootstrap the loader passed to
  * DriverEntry and registers every application opcode. */
 bool adapter_create(const kc_bootstrap* bootstrap);

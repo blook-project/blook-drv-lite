@@ -125,6 +125,14 @@ void service_unload(PDRIVER_OBJECT driver_object) {
     drvlite::state_destroy();
 }
 
+/* Deferred PASSIVE work: process lookup + diagnostic page, after DriverEntry
+ * has returned and the service manager no longer waits on us. */
+VOID deferred_init_thread(PVOID context) {
+    UNREFERENCED_PARAMETER(context);
+    drvlite::state_deferred_initialize();
+    PsTerminateSystemThread(STATUS_SUCCESS);
+}
+
 }  // namespace
 
 extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT driver_object,
@@ -173,6 +181,10 @@ extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT driver_object,
     /* Stage 2: kchannel kernel instance. */
     if (stage >= 2) {
         if (!drvlite::adapter_create(bootstrap)) {
+            if (!manual_map) {
+                write_registry_dword(registry_path, L"StageDone",
+                                     0x1000u | drvlite::g_adapter_last_status);
+            }
             drvlite::state_destroy();
             return STATUS_UNSUCCESSFUL;
         }
@@ -192,8 +204,19 @@ extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT driver_object,
     /* Stage 4: start the PASSIVE-level worker. */
     if (stage >= 4) {
         if (!drvlite::adapter_start_worker()) {
+            if (!manual_map) {
+                write_registry_dword(registry_path, L"StageDone",
+                                     0x2000u | drvlite::g_adapter_last_status);
+            }
             drvlite::state_destroy();
             return STATUS_UNSUCCESSFUL;
+        }
+        HANDLE thread = nullptr;
+        if (NT_SUCCESS(PsCreateSystemThread(&thread, THREAD_ALL_ACCESS, nullptr,
+                                            nullptr, nullptr,
+                                            deferred_init_thread, nullptr)) &&
+            thread != nullptr) {
+            ZwClose(thread);
         }
         if (!manual_map) {
             write_registry_dword(registry_path, L"StageDone", 4);

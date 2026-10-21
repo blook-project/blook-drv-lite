@@ -4,6 +4,9 @@
 #include "../state.h"
 
 namespace drvlite {
+
+u32 g_adapter_last_status = 0;
+
 namespace {
 
 const u16 kApplicationOpcodes[] = {
@@ -46,13 +49,16 @@ bool adapter_create(const kc_bootstrap* bootstrap) {
     config.ctx = &global;
     kc_kernel* kernel = nullptr;
     const kc_status status = kc_kernel_create(bootstrap, &config, &kernel);
+    g_adapter_last_status = static_cast<u32>(status);
     if (status != KC_OK || kernel == nullptr) {
         return false;
     }
     global.kchannel = kernel;
     for (const u16 opcode : kApplicationOpcodes) {
-        if (kc_kernel_register(kernel, opcode, &drvlite_dispatch, &global) !=
-            KC_OK) {
+        const kc_status register_status =
+            kc_kernel_register(kernel, opcode, &drvlite_dispatch, &global);
+        if (register_status != KC_OK) {
+            g_adapter_last_status = static_cast<u32>(register_status);
             kc_kernel_destroy(kernel);
             global.kchannel = nullptr;
             return false;
