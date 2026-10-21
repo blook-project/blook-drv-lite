@@ -23,15 +23,15 @@ SERVICE_NAME: Drvlite
 
 mapper: C:\drvlite\start-drv.cmd
 
-phys-read-4k             median=  169.20 us  p99=62103.60 us      23.1 MiB/s  failures=0
+phys-read-4k             median=  301.10 us  p99=62841.00 us      13.0 MiB/s  failures=0
 
-kernel-read-4k           median=  103.30 us  p99=62717.10 us      37.8 MiB/s  failures=0
+kernel-read-4k           median=  237.00 us  p99=62933.60 us      16.5 MiB/s  failures=0
 
-process-read-4k          median=  199.40 us  p99=61210.60 us      19.6 MiB/s  failures=0
+process-read-4k          median=32137.70 us  p99=62638.50 us       0.1 MiB/s  failures=0
 
-process-write-4k         median=  104.40 us  p99=62103.60 us      37.4 MiB/s  failures=0
+process-write-4k         median=31090.20 us  p99=62772.80 us       0.1 MiB/s  failures=0
 
-phys-write-4k            median=   90.60 us  p99=61846.40 us      43.1 MiB/s  failures=0
+phys-write-4k            median=  325.30 us  p99=63458.10 us      12.0 MiB/s  failures=0
 
 syscall-overhead        unsupported on this build
 

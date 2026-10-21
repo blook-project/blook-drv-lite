@@ -465,7 +465,9 @@ Run-Case "negative_input_fuzz" {
 
 Run-Case "stress_memory_ops" {
     $out = Run-Cli "stress $targetPid $targetBuffer 1000"
-    if ($out -notmatch "failures=0") { throw "stress failures: $out" }
+    if ($out -notmatch "stress: \d+ iterations, 0 failures") {
+        throw "stress failures: $out"
+    }
     return "1000 mixed operations, 0 failures"
 }
 

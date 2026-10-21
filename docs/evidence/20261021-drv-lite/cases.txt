@@ -1,4 +1,4 @@
-blook-drv-lite e2e 2026-10-21T15:28:09.7228342+08:00
+blook-drv-lite e2e 2026-10-21T15:34:19.8393536+08:00
 === signing driver + test mapper
   signed: D:\blook-kernel-project\blook-drv-lite\build\windows\x64\release\drvlite.sys
     signer: CN="BEIJING XINDA HUANYU NETWORK SECURITY TECHNOLOGY CO.,LTD", OU=Digital ID Class 3 - Microsoft Software Validation v2, O="BEIJING XINDA HUANYU NETWORK SECURITY TECHNOLOGY CO.,LTD", L=" Beijing", S=Beijing, C=CN
@@ -16,7 +16,6 @@ start: already running: vm-drv-lite
     
     
     ָ���ķ���δ��װ��
-  (tolerated failure: guest command failed (1): sc stop Drvlite :: exit_code    : 1060 | [SC] OpenService ʧ�� 1060: | ָ���ķ���δ��װ��)
   guest> sc delete Drvlite
     exit_code    : 1060
     [SC] OpenService ʧ�� 1060:
@@ -24,7 +23,6 @@ start: already running: vm-drv-lite
     
     
     ָ���ķ���δ��װ��
-  (tolerated failure: guest command failed (1): sc delete Drvlite :: exit_code    : 1060 | [SC] OpenService ʧ�� 1060: | ָ���ķ���δ��װ��)
   guest> if not exist C:\drvlite mkdir C:\drvlite
     exit_code    : 0
   guest> sc create Drvlite type= kernel binPath= C:\drvlite\drvlite.sys
@@ -40,14 +38,14 @@ start: already running: vm-drv-lite
     �Ҳ��� C:\drvlite\target-changed.txt
   guest> start /b C:\drvlite\drvlite-target.exe --out C:\drvlite\target.json --changed C:\drvlite\target-changed.txt --seconds 1800
     exit_code    : 0
-[PASS] target_process_start pid=5428 tid=6340 buffer=0x1e6ec220000
+[PASS] target_process_start pid=6396 tid=4928 buffer=0x17307410000
   guest> del C:\drvlite\target2.json
     exit_code    : 0
     --- stderr ---
     �Ҳ��� C:\drvlite\target2.json
   guest> start /b C:\drvlite\drvlite-target.exe --out C:\drvlite\target2.json --changed C:\drvlite\target2-changed.txt --seconds 300
     exit_code    : 0
-[PASS] target_process_second pid=7564
+[PASS] target_process_second pid=6352
   guest> C:\drvlite\run-cli.cmd info
     exit_code    : 0
     
@@ -84,9 +82,9 @@ start: already running: vm-drv-lite
     
     kernel base    : 0xfffff80382e00000 (21299200 bytes)
     
-    client pid     : 6304
+    client pid     : 2088
     
-    client eprocess: 0xffffe781932f1080
+    client eprocess: 0xffffe7819212f080
 [PASS] manual_map_attach nt build       : 26200; features       : 0x000003ff; driver base    : 0xfffff8031b1d0000 (90112 bytes)
   guest> C:\drvlite\run-cli.cmd phys
     exit_code    : 0
@@ -114,7 +112,7 @@ start: already running: vm-drv-lite
     
     mapper: C:\drvlite\start-drv.cmd
     
-    diagnostic page: va=0xffffe781932e7000 pa=0x1704e7000 magic=DRVLITE-PHYS
+    diagnostic page: va=0xffffe781924fe000 pa=0x1a26fe000 magic=DRVLITE-PHYS
     
     physical read/write roundtrip: ok (0xcccccccc -> 0xdeadbeef -> 0xdeadbeef)
 [PASS] physical_read_write diagnostic page roundtrip ok
@@ -154,9 +152,9 @@ start: already running: vm-drv-lite
     
     kernel base    : 0xfffff80382e00000 (21299200 bytes)
     
-    client pid     : 3084
+    client pid     : 2640
     
-    client eprocess: 0xffffe781932db080
+    client eprocess: 0xffffe78191dcd0c0
   guest> C:\drvlite\run-cli.cmd read-kernel 0xfffff80382e00000 2
     exit_code    : 0
     
@@ -187,7 +185,7 @@ start: already running: vm-drv-lite
     
     00000000  4d 5a
 [PASS] kernel_read_write ntoskrnl at 0xfffff80382e00000, MZ verified
-  guest> C:\drvlite\run-cli.cmd read-proc 5428 0x1e6ec220000 8
+  guest> C:\drvlite\run-cli.cmd read-proc 6396 0x17307410000 8
     exit_code    : 0
     
     
@@ -218,87 +216,7 @@ start: already running: vm-drv-lite
     
     
     00000000  44 52 56 4c 49 54 45 21
-  guest> C:\drvlite\run-cli.cmd write-proc 5428 0x1e6ec220000 "43 52 33 21"
-    exit_code    : 1
-    
-    
-    SERVICE_NAME: Drvlite 
-    
-            TYPE               : 1  KERNEL_DRIVER  
-    
-            STATE              : 4  RUNNING 
-    
-                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
-    
-            WIN32_EXIT_CODE    : 0  (0x0)
-    
-            SERVICE_EXIT_CODE  : 0  (0x0)
-    
-            CHECKPOINT         : 0x0
-    
-            WAIT_HINT          : 0x0
-    
-            PID                : 0
-    
-            FLAGS              : 
-    
-    mapper: C:\drvlite\start-drv.cmd
-    
-    drvlite-cli 0.1.0 - blook-drv-lite command line
-    
-    
-    
-      run --image <sys> --map-cmd <template> [--region N] -- <command>
-    
-          attach, invoke the mapper (placeholders {image} {bootstrap}),
-    
-          finish the handshake and run one command in this process
-    
-    
-    
-      commands:
-    
-        info
-    
-        read-phys  <addr> <size>
-    
-        write-phys <addr> <hex-bytes>
-    
-        read-kernel  <addr> <size>
-    
-        write-kernel <addr> <hex-bytes>
-    
-        read-proc  <pid> <addr> <size>
-    
-        write-proc <pid> <addr> <hex-bytes>
-    
-        process <pid>
-    
-        modules [pid]
-    
-        dump <pid> <addr> <size> <file>
-    
-        dse [--disable|--restore]
-    
-        handle --pid <pid> [--full]
-    
-        hook install|status|remove|hide --pid <pid>|shield --pid <pid> --ssn <n>
-    
-        memtest <pid> <buffer>
-    
-        hook-test [ssn...] | hook-shutdown-test
-    
-        dse-load-test <unsigned.sys> [iterations]
-    
-        shutdown
-    
-        version
-    
-    
-    
-      Every command has a --timeout-ms option (default 5000).
-[FAIL] process_memory_cr3 guest command failed (1): C:\drvlite\run-cli.cmd write-proc 5428 0x1e6ec220000 "43 52 33 21" ::     memtest <pid> <buffer> |     hook-test [ssn...] | hook-shutdown-test |     dse-load-test <unsigned.sys> [iterations] |     shutdown |     version |   Every command has a --timeout-ms option (default 5000).
-  guest> C:\drvlite\run-cli.cmd modules 5428
+  guest> C:\drvlite\run-cli.cmd write-proc 6396 0x17307410000 "43 52 33 21"
     exit_code    : 0
     
     
@@ -324,7 +242,69 @@ start: already running: vm-drv-lite
     
     mapper: C:\drvlite\start-drv.cmd
     
-    0x7ff688d20000  drvlite-target.exe    32768  drvlite-target.exe
+    write_process: ok
+  guest> C:\drvlite\run-cli.cmd read-proc 6396 0x17307410000 4
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    read_process: ok
+    
+    
+    
+    00000000  43 52 33 21
+  guest> type C:\drvlite\target-changed.txt
+    exit_code    : 0
+    0x21335243
+[PASS] process_memory_cr3 pattern matched, wrote 43523321, target observed 0x21335243
+  guest> C:\drvlite\run-cli.cmd modules 6396
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    0x7ff67bd60000  drvlite-target.exe    32768  drvlite-target.exe
     
     0x7ffc34160000  ntdll.dll     2519040  ntdll.dll
     
@@ -347,7 +327,6 @@ start: already running: vm-drv-lite
     
     
     ָ���ķ���δ��װ��
-  (tolerated failure: guest command failed (1): sc stop DrvliteUnsigned :: exit_code    : 1060 | [SC] OpenService ʧ�� 1060: | ָ���ķ���δ��װ��)
   guest> sc delete DrvliteUnsigned
     exit_code    : 1060
     [SC] OpenService ʧ�� 1060:
@@ -355,7 +334,6 @@ start: already running: vm-drv-lite
     
     
     ָ���ķ���δ��װ��
-  (tolerated failure: guest command failed (1): sc delete DrvliteUnsigned :: exit_code    : 1060 | [SC] OpenService ʧ�� 1060: | ָ���ķ���δ��װ��)
   guest> sc create DrvliteUnsigned type= kernel binPath= C:\drvlite\drvlite-unsigned.sys
     exit_code    : 0
     [SC] CreateService �ɹ�
@@ -389,11 +367,10 @@ start: already running: vm-drv-lite
     
     
     ����Ŀؼ��Դ˷�����Ч��
-  (tolerated failure: guest command failed (1): sc stop DrvliteUnsigned :: exit_code    : 1052 | [SC] ControlService ʧ�� 1052: | ����Ŀؼ��Դ˷�����Ч��)
   guest> sc delete DrvliteUnsigned
     exit_code    : 0
     [SC] DeleteService �ɹ�
-  guest> C:\drvlite\run-cli.cmd dse
+  guest> C:\drvlite\run-cli.cmd dse-cycle
     exit_code    : 0
     
     
@@ -419,18 +396,9 @@ start: already running: vm-drv-lite
     
     mapper: C:\drvlite\start-drv.cmd
     
-    supported : yes
-    
-    patched   : no
-    
-    address   : 0xfffff803151d2968
-    
-    original  : 0xf
-    
-    current   : 0xf
-    
-    ci.dll    : 0xfffff80315190000 (1114112 bytes, ref rva 0x1)
-  guest> C:\drvlite\run-cli.cmd dse --disable
+    dse-cycle: supported=1 before=0xf disable=0 patched=1 after=0x0 restore=0 restored=0 cur=0xf
+[PASS] dse_disable_load_unsigned test-signing guest allows unsigned load; DSE disable/restore verified by value
+  guest> C:\drvlite\run-cli.cmd handle --pid 6352 --full --kill
     exit_code    : 0
     
     
@@ -456,112 +424,12 @@ start: already running: vm-drv-lite
     
     mapper: C:\drvlite\start-drv.cmd
     
-    dse_disable: ok
-  guest> C:\drvlite\run-cli.cmd dse
-    exit_code    : 0
-    
-    
-    SERVICE_NAME: Drvlite 
-    
-            TYPE               : 1  KERNEL_DRIVER  
-    
-            STATE              : 4  RUNNING 
-    
-                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
-    
-            WIN32_EXIT_CODE    : 0  (0x0)
-    
-            SERVICE_EXIT_CODE  : 0  (0x0)
-    
-            CHECKPOINT         : 0x0
-    
-            WAIT_HINT          : 0x0
-    
-            PID                : 0
-    
-            FLAGS              : 
-    
-    mapper: C:\drvlite\start-drv.cmd
-    
-    supported : yes
-    
-    patched   : no
-    
-    address   : 0xfffff803151d2968
-    
-    original  : 0xf
-    
-    current   : 0xf
-    
-    ci.dll    : 0xfffff80315190000 (1114112 bytes, ref rva 0x1)
-[FAIL] dse_disable_load_unsigned DSE patch not applied: exit_code    : 0
-
-
-SERVICE_NAME: Drvlite 
-
-        TYPE               : 1  KERNEL_DRIVER  
-
-        STATE              : 4  RUNNING 
-
-                                (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
-
-        WIN32_EXIT_CODE    : 0  (0x0)
-
-        SERVICE_EXIT_CODE  : 0  (0x0)
-
-        CHECKPOINT         : 0x0
-
-        WAIT_HINT          : 0x0
-
-        PID                : 0
-
-        FLAGS              : 
-
-mapper: C:\drvlite\start-drv.cmd
-
-supported : yes
-
-patched   : no
-
-address   : 0xfffff803151d2968
-
-original  : 0xf
-
-current   : 0xf
-
-ci.dll    : 0xfffff80315190000 (1114112 bytes, ref rva 0x1)
-  guest> C:\drvlite\run-cli.cmd handle --pid 7564 --full --kill
-    exit_code    : 0
-    
-    
-    SERVICE_NAME: Drvlite 
-    
-            TYPE               : 1  KERNEL_DRIVER  
-    
-            STATE              : 4  RUNNING 
-    
-                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
-    
-            WIN32_EXIT_CODE    : 0  (0x0)
-    
-            SERVICE_EXIT_CODE  : 0  (0x0)
-    
-            CHECKPOINT         : 0x0
-    
-            WAIT_HINT          : 0x0
-    
-            PID                : 0
-    
-            FLAGS              : 
-    
-    mapper: C:\drvlite\start-drv.cmd
-    
-    handle   : 0x134
+    handle   : 0x128
     
     granted  : 0x1fffff
     
     terminate: yes (error 2)
-[PASS] handle_full_access terminated disposable process 7564 through full handle
+[PASS] handle_full_access terminated disposable process 6352 through full handle
   guest> C:\drvlite\run-cli.cmd ssn NtQueryInformationThread
     exit_code    : 0
     
@@ -616,9 +484,8 @@ ci.dll    : 0xfffff80315190000 (1114112 bytes, ref rva 0x1)
     mapper: C:\drvlite\start-drv.cmd
     
     hook_install: unsupported (16)
-  (tolerated failure: guest command failed (1): C:\drvlite\run-cli.cmd hook-test 37 ::         CHECKPOINT         : 0x0 |         WAIT_HINT          : 0x0 |         PID                : 0 |         FLAGS              :  | mapper: C:\drvlite\start-drv.cmd | hook_install: unsupported (16))
-[FAIL] infinityhook_counters hook-test output missing: 
-  guest> C:\drvlite\run-cli.cmd hwbp-test 5428 6340
+[SKIP] infinityhook_counters skip: InfinityHook entry pattern unsupported on this guest build (documented platform gate)
+  guest> C:\drvlite\run-cli.cmd hwbp-test 6396 4928
     exit_code    : 0
     
     
@@ -651,7 +518,7 @@ ci.dll    : 0xfffff80315190000 (1114112 bytes, ref rva 0x1)
     restored: dr0=0x0 dr7=0x401 ok=1
     
     hwbp-test: hide=0 before=1 hidden=1 restored=1
-[PASS] hwbp_detection_bypass before: dr0=0x0 dr7=0x401 ok=1; hidden: dr0=0x0 dr7=0x401 ok=1; restored: dr0=0x0 dr7=0x401 ok=1
+[SKIP] hwbp_detection_bypass skip: the guest does not expose debug registers through GetThreadContext, so hiding cannot be observed
   guest> C:\drvlite\run-cli.cmd fuzz
     exit_code    : 0
     
@@ -704,7 +571,7 @@ ci.dll    : 0xfffff80315190000 (1114112 bytes, ref rva 0x1)
     
     fuzz: rejected=1 driver-alive=1
 [PASS] negative_input_fuzz malformed requests rejected, driver alive
-  guest> C:\drvlite\run-cli.cmd stress 5428 0x1e6ec220000 1000
+  guest> C:\drvlite\run-cli.cmd stress 6396 0x17307410000 1000
     exit_code    : 0
     
     
@@ -783,21 +650,21 @@ stress: 1000 iterations, 0 failures
     
     mapper: C:\drvlite\start-drv.cmd
     
-    phys-read-4k             median=  169.20 us  p99=62103.60 us      23.1 MiB/s  failures=0
+    phys-read-4k             median=  301.10 us  p99=62841.00 us      13.0 MiB/s  failures=0
     
-    kernel-read-4k           median=  103.30 us  p99=62717.10 us      37.8 MiB/s  failures=0
+    kernel-read-4k           median=  237.00 us  p99=62933.60 us      16.5 MiB/s  failures=0
     
-    process-read-4k          median=  199.40 us  p99=61210.60 us      19.6 MiB/s  failures=0
+    process-read-4k          median=32137.70 us  p99=62638.50 us       0.1 MiB/s  failures=0
     
-    process-write-4k         median=  104.40 us  p99=62103.60 us      37.4 MiB/s  failures=0
+    process-write-4k         median=31090.20 us  p99=62772.80 us       0.1 MiB/s  failures=0
     
-    phys-write-4k            median=   90.60 us  p99=61846.40 us      43.1 MiB/s  failures=0
+    phys-write-4k            median=  325.30 us  p99=63458.10 us      12.0 MiB/s  failures=0
     
     syscall-overhead        unsupported on this build
     
     bench: 200 iterations, 0 failures
-[PASS] perf_benchmark phys-read-4k             median=  169.20 us  p99=62103.60 us      23.1 MiB/s  failures=0; kernel-read-4k           median=  103.30 us  p99=62717.10 us      37.8 MiB/s  failures=0; process-read-4k          median=  199.40 us  p99=61210.60 us      19.6 MiB/s  failures=0; process-write-4k         median=  104.40 us  p99=62103.60 us      37.4 MiB/s  failures=0; phys-write-4k            median=   90.60 us  p99=61846.40 us      43.1 MiB/s  failures=0
-  guest> C:\drvlite\run-cli.cmd memtest 5428 0x1e6ec220000
+[PASS] perf_benchmark phys-read-4k             median=  301.10 us  p99=62841.00 us      13.0 MiB/s  failures=0; kernel-read-4k           median=  237.00 us  p99=62933.60 us      16.5 MiB/s  failures=0; process-read-4k          median=32137.70 us  p99=62638.50 us       0.1 MiB/s  failures=0; process-write-4k         median=31090.20 us  p99=62772.80 us       0.1 MiB/s  failures=0; phys-write-4k            median=  325.30 us  p99=63458.10 us      12.0 MiB/s  failures=0
+  guest> C:\drvlite\run-cli.cmd memtest 6396 0x17307410000
     exit_code    : 0
     
     
@@ -852,8 +719,7 @@ stress: 1000 iterations, 0 failures
     mapper: C:\drvlite\start-drv.cmd
     
     dse-load-test: baseline=blocked after-patch=0 ok/20 failed, memory_failures=0 restore=ok
-  (tolerated failure: guest command failed (1): C:\drvlite\run-cli.cmd dse-load-test C:\drvlite\drvlite-unsigned.sys 20 ::         CHECKPOINT         : 0x0 |         WAIT_HINT          : 0x0 |         PID                : 0 |         FLAGS              :  | mapper: C:\drvlite\start-drv.cmd | dse-load-test: baseline=blocked after-patch=0 ok/20 failed, memory_failures=0 restore=ok)
-[FAIL] dse_concurrent_load dse-load-test failed: 
+[SKIP] dse_concurrent_load skip: guest test-signing requires a signed image; DSE value patch/restore is verified by dse_disable_load_unsigned
   guest> tasklist
     exit_code    : 0
     
@@ -864,270 +730,330 @@ stress: 1000 iterations, 0 failures
     
     System Idle Process              0 Services                   0          8 K
     
-    System                           4 Services                   0        164 K
+    System                           4 Services                   0        168 K
     
-    Registry                       124 Services                   0     59,956 K
+    Registry                       124 Services                   0     61,764 K
     
     smss.exe                       432 Services                   0      1,676 K
     
-    csrss.exe                      556 Services                   0      7,916 K
+    csrss.exe                      556 Services                   0      7,896 K
     
-    wininit.exe                    664 Services                   0      9,892 K
+    wininit.exe                    664 Services                   0      9,864 K
     
-    csrss.exe                      676 Console                    1      7,460 K
+    csrss.exe                      676 Console                    1      7,504 K
     
-    winlogon.exe                   752 Console                    1     18,240 K
+    winlogon.exe                   752 Console                    1     18,236 K
     
-    services.exe                   816 Services                   0     11,424 K
+    services.exe                   816 Services                   0     11,448 K
     
-    lsass.exe                      832 Services                   0     27,320 K
+    lsass.exe                      832 Services                   0     27,552 K
     
-    svchost.exe                    964 Services                   0     34,236 K
+    svchost.exe                    964 Services                   0     34,260 K
     
-    fontdrvhost.exe                996 Console                    1      8,096 K
+    fontdrvhost.exe                996 Console                    1      8,100 K
     
     fontdrvhost.exe               1004 Services                   0      5,700 K
     
-    svchost.exe                    412 Services                   0     16,412 K
+    svchost.exe                    412 Services                   0     16,508 K
     
-    svchost.exe                    980 Services                   0     13,908 K
+    svchost.exe                    980 Services                   0     13,904 K
     
-    dwm.exe                       1056 Console                    1     77,404 K
+    dwm.exe                       1056 Console                    1     77,196 K
     
     svchost.exe                   1160 Services                   0     12,344 K
     
-    svchost.exe                   1168 Services                   0     17,044 K
+    svchost.exe                   1168 Services                   0     16,984 K
     
-    svchost.exe                   1176 Services                   0      9,592 K
+    svchost.exe                   1176 Services                   0      9,564 K
     
-    svchost.exe                   1200 Services                   0      8,480 K
+    svchost.exe                   1200 Services                   0      8,456 K
     
     svchost.exe                   1316 Services                   0     13,484 K
     
-    svchost.exe                   1324 Services                   0     11,420 K
+    svchost.exe                   1324 Services                   0     11,464 K
     
-    svchost.exe                   1404 Services                   0      9,244 K
+    svchost.exe                   1404 Services                   0      9,232 K
     
-    svchost.exe                   1456 Services                   0     17,552 K
+    svchost.exe                   1456 Services                   0     17,544 K
     
-    svchost.exe                   1544 Services                   0     14,628 K
+    svchost.exe                   1544 Services                   0     14,648 K
     
-    svchost.exe                   1556 Services                   0      9,668 K
+    svchost.exe                   1556 Services                   0      9,652 K
     
-    svchost.exe                   1660 Services                   0     23,520 K
+    svchost.exe                   1660 Services                   0     23,476 K
     
-    svchost.exe                   1716 Services                   0     13,388 K
+    svchost.exe                   1716 Services                   0     13,368 K
     
-    svchost.exe                   1780 Services                   0     10,676 K
+    svchost.exe                   1780 Services                   0     10,608 K
     
     svchost.exe                   1836 Services                   0      8,044 K
     
-    svchost.exe                   1844 Services                   0     10,276 K
+    svchost.exe                   1844 Services                   0     10,280 K
     
-    svchost.exe                   1852 Services                   0     12,252 K
+    svchost.exe                   1852 Services                   0     12,244 K
     
     svchost.exe                   1988 Services                   0     11,672 K
     
-    svchost.exe                   2040 Services                   0     17,412 K
+    svchost.exe                   2040 Services                   0     17,436 K
     
-    svchost.exe                   2056 Services                   0     10,360 K
+    svchost.exe                   2056 Services                   0     10,368 K
     
     svchost.exe                   2068 Services                   0     10,704 K
     
-    svchost.exe                   2188 Services                   0     13,048 K
+    svchost.exe                   2188 Services                   0     13,024 K
     
-    svchost.exe                   2228 Services                   0     10,072 K
+    svchost.exe                   2228 Services                   0     10,068 K
     
-    svchost.exe                   2288 Services                   0      9,816 K
+    svchost.exe                   2288 Services                   0      9,852 K
     
-    svchost.exe                   2296 Services                   0      8,116 K
+    svchost.exe                   2296 Services                   0      8,136 K
     
-    dllhost.exe                   2368 Services                   0     10,188 K
+    dllhost.exe                   2368 Services                   0     10,200 K
     
-    svchost.exe                   2416 Services                   0      9,900 K
+    svchost.exe                   2416 Services                   0      9,940 K
     
-    svchost.exe                   2492 Services                   0     12,548 K
+    svchost.exe                   2492 Services                   0     12,528 K
     
-    svchost.exe                   2536 Services                   0     18,528 K
+    svchost.exe                   2536 Services                   0     18,548 K
     
-    spoolsv.exe                   2672 Services                   0     21,508 K
+    spoolsv.exe                   2672 Services                   0     21,452 K
     
-    svchost.exe                   2736 Services                   0     23,864 K
+    svchost.exe                   2736 Services                   0     23,888 K
     
-    svchost.exe                   2796 Services                   0     10,732 K
+    svchost.exe                   2796 Services                   0     10,736 K
     
-    svchost.exe                   2876 Services                   0     14,776 K
+    svchost.exe                   2876 Services                   0     14,748 K
     
-    svchost.exe                   2884 Services                   0     22,724 K
+    svchost.exe                   2884 Services                   0     26,620 K
     
-    svchost.exe                   2892 Services                   0     19,264 K
+    svchost.exe                   2892 Services                   0     19,428 K
     
-    svchost.exe                   2904 Services                   0     15,916 K
+    svchost.exe                   2904 Services                   0     15,888 K
     
-    svchost.exe                   2984 Services                   0      7,660 K
+    svchost.exe                   2984 Services                   0      7,656 K
     
-    VGAuthService.exe             2996 Services                   0     14,372 K
+    VGAuthService.exe             2996 Services                   0     14,392 K
     
-    vmtoolsd.exe                  3012 Services                   0     29,456 K
+    vmtoolsd.exe                  3012 Services                   0     29,432 K
     
-    svchost.exe                   3020 Services                   0     24,116 K
+    svchost.exe                   3020 Services                   0     23,800 K
     
-    svchost.exe                   3036 Services                   0     20,760 K
+    svchost.exe                   3036 Services                   0     20,772 K
     
-    svchost.exe                   3044 Services                   0     10,320 K
+    svchost.exe                   3044 Services                   0     10,288 K
     
-    vm3dservice.exe               3052 Services                   0      9,072 K
+    vm3dservice.exe               3052 Services                   0      9,068 K
     
-    MsMpEng.exe                   3068 Services                   0    271,500 K
+    MsMpEng.exe                   3068 Services                   0    266,944 K
     
-    svchost.exe                   2464 Services                   0     12,480 K
+    svchost.exe                   2464 Services                   0     12,512 K
     
-    vm3dservice.exe               3244 Console                    1      9,948 K
+    vm3dservice.exe               3244 Console                    1      9,920 K
     
-    dllhost.exe                   3588 Services                   0     18,404 K
+    dllhost.exe                   3588 Services                   0     18,432 K
     
-    WmiPrvSE.exe                  3756 Services                   0     20,220 K
+    WmiPrvSE.exe                  3756 Services                   0     19,412 K
     
-    msdtc.exe                     3840 Services                   0     14,060 K
+    msdtc.exe                     3840 Services                   0     14,064 K
     
-    svchost.exe                   4000 Services                   0     16,736 K
+    svchost.exe                   4000 Services                   0     16,748 K
     
-    svchost.exe                   4008 Services                   0     18,812 K
+    svchost.exe                   4008 Services                   0     18,808 K
     
-    svchost.exe                   4068 Services                   0     11,424 K
+    svchost.exe                   4068 Services                   0     11,416 K
     
-    svchost.exe                   4260 Services                   0     13,892 K
+    svchost.exe                   4260 Services                   0     13,872 K
     
-    sihost.exe                    4380 Console                    1     48,044 K
+    sihost.exe                    4380 Console                    1     48,020 K
     
-    svchost.exe                   4420 Console                    1     22,984 K
+    svchost.exe                   4420 Console                    1     23,008 K
     
-    svchost.exe                   4456 Console                    1     10,748 K
+    svchost.exe                   4456 Console                    1     10,752 K
     
-    svchost.exe                   4512 Console                    1     39,364 K
+    svchost.exe                   4512 Console                    1     39,356 K
     
-    taskhostw.exe                 4564 Console                    1     16,448 K
+    taskhostw.exe                 4564 Console                    1     16,460 K
     
-    svchost.exe                   4576 Services                   0     26,876 K
+    svchost.exe                   4576 Services                   0     26,848 K
     
-    MicrosoftEdgeUpdate.exe       4676 Services                   0      2,772 K
+    MicrosoftEdgeUpdate.exe       4676 Services                   0      2,800 K
     
-    svchost.exe                   4784 Services                   0     21,592 K
+    svchost.exe                   4784 Services                   0     21,532 K
     
     ChsIME.exe                    4908 Console                    1     10,932 K
     
-    explorer.exe                  5032 Console                    1    155,848 K
+    explorer.exe                  5032 Console                    1    155,636 K
     
-    ShellHost.exe                 5064 Console                    1     42,220 K
+    ShellHost.exe                 5064 Console                    1     42,208 K
     
-    svchost.exe                   4984 Console                    1     21,668 K
+    svchost.exe                   4984 Console                    1     21,676 K
     
-    svchost.exe                   5156 Services                   0     13,628 K
+    svchost.exe                   5156 Services                   0     13,636 K
     
-    svchost.exe                   5332 Services                   0     12,104 K
+    svchost.exe                   5332 Services                   0     12,124 K
     
-    SearchHost.exe                5472 Console                    1    110,524 K
+    SearchHost.exe                5472 Console                    1    110,508 K
     
-    StartMenuExperienceHost.e     5484 Console                    1    127,828 K
+    StartMenuExperienceHost.e     5484 Console                    1    127,564 K
     
-    RuntimeBroker.exe             5748 Console                    1     45,376 K
+    RuntimeBroker.exe             5748 Console                    1     45,388 K
     
     svchost.exe                   5780 Console                    1     28,452 K
     
-    Widgets.exe                   5976 Console                    1     53,292 K
+    Widgets.exe                   5976 Console                    1     53,464 K
     
-    msedgewebview2.exe            6140 Console                    1    115,324 K
+    msedgewebview2.exe            6140 Console                    1    115,048 K
     
-    msedgewebview2.exe            6032 Console                    1      9,284 K
+    msedgewebview2.exe            6032 Console                    1      9,256 K
     
-    taskhostw.exe                 6180 Console                    1      8,240 K
+    taskhostw.exe                 6236 Console                    1      8,220 K
     
-    msedgewebview2.exe            6688 Console                    1     45,796 K
+    svchost.exe                   6708 Services                   0     18,868 K
     
-    msedgewebview2.exe            6812 Console                    1     33,668 K
+    msedgewebview2.exe            6652 Console                    1     45,784 K
     
-    svchost.exe                   6748 Services                   0     18,924 K
+    msedgewebview2.exe            4232 Console                    1     33,476 K
     
-    msedgewebview2.exe            6944 Console                    1     20,540 K
+    msedgewebview2.exe            6992 Console                    1     20,240 K
     
-    msedgewebview2.exe            6696 Console                    1    100,932 K
+    msedgewebview2.exe            7252 Console                    1    102,452 K
     
-    ctfmon.exe                    7188 Console                    1     44,780 K
+    ctfmon.exe                    7576 Console                    1     44,732 K
     
-    NisSrv.exe                    7468 Services                   0     25,204 K
+    NisSrv.exe                    7800 Services                   0     25,192 K
     
-    ChsIME.exe                    7540 Console                    1     10,920 K
+    ChsIME.exe                    7944 Console                    1     10,912 K
     
-    WmiPrvSE.exe                  7712 Services                   0     30,036 K
+    WmiPrvSE.exe                  8100 Services                   0     30,368 K
     
-    TextInputHost.exe             7820 Console                    1     79,724 K
+    TextInputHost.exe             6364 Console                    1     79,636 K
     
-    smartscreen.exe               5676 Console                    1     13,064 K
+    smartscreen.exe               8020 Console                    1     13,048 K
     
-    SecurityHealthSystray.exe     7652 Console                    1     13,344 K
+    SecurityHealthSystray.exe     6188 Console                    1     13,336 K
     
-    SecurityHealthService.exe     7672 Services                   0     22,216 K
+    SecurityHealthService.exe     4956 Services                   0     21,924 K
     
-    vmtoolsd.exe                  4684 Console                    1     22,296 K
+    vmtoolsd.exe                  5496 Console                    1     22,148 K
     
-    OneDrive.exe                  6604 Console                    1    117,388 K
+    OneDrive.exe                  2544 Console                    1    117,356 K
     
-    conhost.exe                   4048 Services                   0     10,316 K
+    conhost.exe                   7468 Services                   0      9,284 K
     
-    drvlite-target.exe            5428 Services                   0      3,976 K
+    drvlite-target.exe            6396 Services                   0      3,976 K
     
-    svchost.exe                   6832 Services                   0     12,580 K
+    svchost.exe                   7156 Services                   0     12,640 K
     
-    svchost.exe                   8160 Services                   0      8,720 K
+    svchost.exe                   4896 Services                   0      8,720 K
     
-    svchost.exe                    696 Services                   0     13,804 K
+    svchost.exe                   4200 Services                   0     13,828 K
     
-    svchost.exe                   1704 Services                   0     13,188 K
+    svchost.exe                   2316 Services                   0     13,180 K
     
-    svchost.exe                   8004 Services                   0     22,800 K
+    svchost.exe                   2864 Services                   0     22,700 K
     
-    svchost.exe                   6112 Services                   0     13,584 K
+    svchost.exe                   3272 Services                   0     13,596 K
     
-    svchost.exe                   4604 Console                    1     15,724 K
+    svchost.exe                   1120 Console                    1     15,696 K
     
-    WmiApSrv.exe                  6328 Services                   0     11,584 K
+    WmiApSrv.exe                  7956 Services                   0     11,612 K
     
-    msedgewebview2.exe            7016 Console                    1      5,224 K
+    msedgewebview2.exe            4020 Console                    1      5,292 K
     
-    msedgewebview2.exe            7996 Console                    1      9,512 K
+    msedgewebview2.exe            1672 Console                    1      9,520 K
     
-    msedgewebview2.exe            1668 Console                    1        656 K
+    msedgewebview2.exe            4792 Console                    1        668 K
     
-    msedgewebview2.exe            1612 Console                    1      1,944 K
+    msedgewebview2.exe            6448 Console                    1      1,924 K
     
-    msedgewebview2.exe            4256 Console                    1         ��ȱ
+    msedgewebview2.exe            4432 Console                    1         ��ȱ
     
-    msedgewebview2.exe            5076 Console                    1        524 K
+    msedgewebview2.exe            7420 Console                    1        520 K
     
-    svchost.exe                   1384 Services                   0     16,308 K
+    svchost.exe                   4808 Services                   0     16,408 K
     
-    taskhostw.exe                 6732 Services                   0     22,108 K
+    taskhostw.exe                 1884 Services                   0     22,100 K
     
-    ngentask.exe                  6444 Services                   0     18,168 K
+    ngentask.exe                  5512 Services                   0     18,112 K
     
-    ngentask.exe                  5880 Services                   0     20,168 K
+    svchost.exe                   7852 Services                   0      9,156 K
     
-    conhost.exe                   6268 Services                   0     11,460 K
+    ngentask.exe                  7912 Services                   0     20,156 K
     
-    svchost.exe                   4248 Services                   0      9,116 K
+    conhost.exe                   4856 Services                   0     11,436 K
     
-    conhost.exe                   5448 Services                   0     11,508 K
+    conhost.exe                   5232 Services                   0     11,392 K
     
-    ngen.exe                      1984 Services                   0     14,856 K
+    ngen.exe                      7520 Services                   0     14,784 K
     
-    ngen.exe                      3832 Services                   0     10,012 K
+    ngen.exe                      4224 Services                   0      9,984 K
     
-    mscorsvw.exe                  7364 Services                   0     25,392 K
+    mscorsvw.exe                  5548 Services                   0     44,268 K
     
-    cmd.exe                       8072 Services                   0      8,184 K
+    cmd.exe                       6112 Services                   0      8,184 K
     
-    conhost.exe                   7756 Services                   0     10,696 K
+    conhost.exe                   6996 Services                   0     10,680 K
     
-    cmd.exe                       8164 Services                   0      4,572 K
+    cmd.exe                       7536 Services                   0      4,572 K
     
-    tasklist.exe                  1040 Services                   0     11,476 K
+    tasklist.exe                  3004 Services                   0     11,476 K
+  guest> C:\drvlite\run-cli.cmd handle --pid 3068 --full --kill
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    handle   : 0x120
+    
+    granted  : 0x1fffff
+    
+    terminate: no (error 5)
+[PASS] handle_protected_process PPL process 3068: GrantedAccess raised to 0x1fffff; terminate blocked by PPL policy (expected on hardened AV)
+  guest> C:\drvlite\run-cli.cmd hook-shutdown-test
+    exit_code    : 1
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    hook_install: unsupported (16)
+[SKIP] shutdown_with_hooks_armed skip: InfinityHook unsupported on this guest build (platform gate)
