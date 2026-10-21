@@ -9,11 +9,11 @@ killed on hang) and archives the evidence.
 - `bvmenv` built from `blook-vmware-environment` (base image with test
   signing enabled).
 - `blook-kchannel` checkout (`KCHANNEL_DIR` or `--kchannel_dir`).
-- A test-signed **mapper**: this repo ships `tests/guest/mapper`
+- An SPC-signed **mapper**: this repo ships `tests/guest/mapper`
   (`drvlite-mapper.sys` + `drvlite-mapper-cli.exe`). It is a device-based test
   harness, not part of the production load model. A production run uses
   `blook-kdu` as the mapper instead.
-- The test signer assets in `signer/` (inherited from `blook-drv`).
+- The SPC signer assets in `signer/` (inherited from `blook-drv`).
 
 ## Running
 

@@ -1,13 +1,13 @@
-# Local build pipeline: configure -> build -> host tests -> sign.
-#
-#   ./scripts/Build.ps1                                   # build + test + sign
-#   ./scripts/Build.ps1 -NoTests -NoSign                  # fast bring-up
-#   ./scripts/Build.ps1 -KchannelDir D:\blook-kchannel    # explicit checkout
-#   ./scripts/Build.ps1 -WdkDir 'C:\Program Files (x86)\Windows Kits\10'
-#
-# The kernel image is signed with the in-repo signer assets inherited from
-# blook-drv (SPC + local TSA). CI only test-signs; this script is what a
-# release run uses.
+  Local build pipeline: configure -> build -> host tests -> sign.
+ 
+    ./scripts/Build.ps1                                     build + test + sign
+    ./scripts/Build.ps1 -NoTests -NoSign                    fast bring-up
+    ./scripts/Build.ps1 -KchannelDir D:\blook-kchannel      explicit checkout
+    ./scripts/Build.ps1 -WdkDir 'C:\Program Files (x86)\Windows Kits\10'
+ 
+  The kernel image is signed with the in-repo signer assets inherited from
+  blook-drv (SPC + local TSA). CI only test-signs; this script is what a
+  release run uses.
 [CmdletBinding()]
 param(
     [switch]$NoTests,

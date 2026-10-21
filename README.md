@@ -101,10 +101,10 @@ program lives in `examples/read_process_dse.cpp` (built as `drvlite-example`).
 ## Signing
 
 Test images are signed with the `signer/` assets inherited from the
-`blook-drv` project (SPC + local TSA); CI uses an ephemeral test certificate
+`blook-drv` project (SPC + local TSA); CI signs and loads the kernel driver with it (no test-signing mode)
 only. No private key is stored in this repository. Manual mapping does not
 require a valid signature, but the guest test helper drivers used by the e2e
-suite are test-signed.
+suite are SPC-signed as well.
 
 ## Supported builds
 
