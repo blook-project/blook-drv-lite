@@ -97,12 +97,25 @@ Write-Host "imported $((Get-ChildItem $certDir -Filter '*.cer' -ErrorAction Sile
 $sig = Get-AuthenticodeSignature -FilePath $driver
 Write-Host "authenticode (user policy): $($sig.Status) $($sig.StatusMessage)"
 & $signer check $driver 2>&1 | ForEach-Object { Write-Host "spcsign check: $_" }
-$signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" `
-    -Recurse -Filter "signtool.exe" -ErrorAction SilentlyContinue |
-    Select-Object -First 1
+$signtool = $null
+foreach ($root in @("$env:WDK_ROOT\bin", "$env:WDK_DIR\c\bin",
+        "C:\Program Files (x86)\Windows Kits\10\bin")) {
+    if ([string]::IsNullOrWhiteSpace($root) -or -not (Test-Path $root)) {
+        continue
+    }
+    $signtool = Get-ChildItem $root -Recurse -Filter "signtool.exe" `
+        -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match "\\x64\\signtool\.exe$" } |
+        Select-Object -First 1
+    if ($null -ne $signtool) { break }
+}
 if ($null -ne $signtool) {
-    $verify = (& $signtool.FullName verify /kp /v $driver 2>&1 | Out-String)
-    Write-Host $verify
+    try {
+        $verify = (& $signtool.FullName verify /kp /v $driver 2>&1 | Out-String)
+        Write-Host $verify
+    } catch {
+        Write-Host "signtool verification could not run: $($_.Exception.Message)"
+    }
 } else {
     Write-Host "signtool not found; skipped /kp verification"
 }

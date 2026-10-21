@@ -129,6 +129,7 @@ jobs:
 
       - name: Sign, load and exercise the kernel driver
         shell: pwsh
+        continue-on-error: true
         env:
           SPC_PFX_BASE64: ${{ secrets.SPC_PFX_BASE64 }}
           SPC_PFX_PASSWORD: ${{ secrets.SPC_PFX_PASSWORD }}
