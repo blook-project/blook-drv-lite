@@ -13,6 +13,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cinttypes>
 #include <cstdio>
 #include <cstdlib>
@@ -665,6 +666,198 @@ int run_command(drvlite::session& session, int argc, char** argv,
                     hide_status, before, hidden, restored);
         return hide_status == DRVLITE_OK && before && hidden && restored ? 0
                                                                          : 1;
+    }
+    if (command == "bench") {
+        uint32_t iterations = 500;
+        uint32_t pid = GetCurrentProcessId();
+        uint64_t address = 0;
+        for (int index = 1; index < argc; ++index) {
+            if (std::strcmp(argv[index], "--iterations") == 0 &&
+                index + 1 < argc) {
+                parse_u32(argv[++index], &iterations);
+            } else if (std::strcmp(argv[index], "--pid") == 0 &&
+                       index + 1 < argc) {
+                parse_u32(argv[++index], &pid);
+            } else if (std::strcmp(argv[index], "--addr") == 0 &&
+                       index + 1 < argc) {
+                parse_u64(argv[++index], &address);
+            }
+        }
+        if (iterations == 0) {
+            iterations = 500;
+        }
+        drvlite::device_info info;
+        if (session.query_info(&info) != DRVLITE_OK) {
+            print_status("bench", DRVLITE_ERR_STATE);
+            return 1;
+        }
+        void* local = VirtualAlloc(nullptr, 0x2000, MEM_COMMIT | MEM_RESERVE,
+                                   PAGE_READWRITE);
+        if (local == nullptr) {
+            std::printf("VirtualAlloc failed\n");
+            return 1;
+        }
+        if (address == 0) {
+            address = reinterpret_cast<uint64_t>(local);
+        }
+        std::vector<uint8_t> buffer(0x1000, 0x41);
+        LARGE_INTEGER frequency{};
+        QueryPerformanceFrequency(&frequency);
+        auto measure = [&](const char* name, auto&& operation) {
+            std::vector<double> samples;
+            samples.reserve(iterations);
+            uint32_t failures = 0;
+            for (uint32_t index = 0; index < iterations; ++index) {
+                LARGE_INTEGER start{};
+                LARGE_INTEGER end{};
+                QueryPerformanceCounter(&start);
+                const int status = operation();
+                QueryPerformanceCounter(&end);
+                if (status != DRVLITE_OK) {
+                    ++failures;
+                }
+                const double micros =
+                    static_cast<double>(end.QuadPart - start.QuadPart) * 1e6 /
+                    static_cast<double>(frequency.QuadPart);
+                samples.push_back(micros);
+            }
+            std::sort(samples.begin(), samples.end());
+            const double median = samples[samples.size() / 2];
+            const double p99 = samples[static_cast<size_t>(
+                static_cast<double>(samples.size()) * 0.99)];
+            const double megabytes_per_second =
+                median > 0.0 ? (4096.0 / (median / 1e6)) / (1024.0 * 1024.0)
+                             : 0.0;
+            std::printf(
+                "%-24s median=%8.2f us  p99=%8.2f us  %8.1f MiB/s  "
+                "failures=%u\n",
+                name, median, p99, megabytes_per_second, failures);
+            return failures;
+        };
+        uint32_t failures = 0;
+        if (info.test_page_pa != 0) {
+            failures += measure("phys-read-4k", [&] {
+                return session.read_physical(info.test_page_pa, buffer.data(),
+                                             4096);
+            });
+        }
+        failures += measure("kernel-read-4k", [&] {
+            return session.read_kernel(info.kernel_base, buffer.data(), 4096);
+        });
+        failures += measure("process-read-4k", [&] {
+            return session.read_process(pid, address, buffer.data(), 4096);
+        });
+        failures += measure("process-write-4k", [&] {
+            return session.write_process(pid, address, buffer.data(), 4096);
+        });
+        if (info.test_page_pa != 0) {
+            failures += measure("phys-write-4k", [&] {
+                return session.write_physical(info.test_page_pa, buffer.data(),
+                                              4096);
+            });
+            /* Restore the diagnostic magic after the write benchmark. */
+            session.write_physical(info.test_page_pa, "DRVLITE-PHYS", 12);
+        }
+        VirtualFree(local, 0, MEM_RELEASE);
+        std::printf("bench: %u iterations, %u failures\n", iterations,
+                    failures);
+        return failures == 0 ? 0 : 1;
+    }
+    if (command == "fuzz") {
+        auto make_header = [](uint16_t opcode, uint32_t size) {
+            drvlite_req_header header{};
+            header.magic = DRVLITE_REQ_MAGIC;
+            header.abi_major = DRVLITE_ABI_MAJOR;
+            header.abi_minor = DRVLITE_ABI_MINOR;
+            header.op = opcode;
+            header.size = size;
+            return header;
+        };
+        auto expect_error = [&](const char* name, uint16_t opcode,
+                                const void* input, uint32_t length) {
+            uint8_t output[64] = {};
+            uint32_t output_length = 0;
+            const int status =
+                session.call(opcode, input, length, output, sizeof(output),
+                             &output_length, 2000);
+            const bool rejected = status != DRVLITE_OK;
+            std::printf("%-30s %-24s %s\n", name,
+                        drvlite::status_string(status),
+                        rejected ? "rejected" : "ACCEPTED");
+            return rejected;
+        };
+        bool ok = true;
+        uint8_t bad_magic[64] = {};
+        ok &= expect_error("unknown-opcode", 0x8FFF, bad_magic,
+                           sizeof(bad_magic));
+        ok &= expect_error("bad-request-magic", DRVLITE_OP_QUERY_INFO,
+                           bad_magic, sizeof(drvlite_query_info_req));
+        drvlite_query_info_req wrong_size{};
+        wrong_size.hdr =
+            make_header(DRVLITE_OP_QUERY_INFO, sizeof(wrong_size) - 4);
+        ok &= expect_error("query-info-wrong-size", DRVLITE_OP_QUERY_INFO,
+                           &wrong_size, sizeof(wrong_size));
+        drvlite_mem_req zero_read{};
+        zero_read.hdr =
+            make_header(DRVLITE_OP_MEM_KERNEL_READ, sizeof(zero_read));
+        zero_read.address = 0xFFFFF80000000000ULL;
+        zero_read.size = 0;
+        ok &= expect_error("kernel-read-zero-size", DRVLITE_OP_MEM_KERNEL_READ,
+                           &zero_read, sizeof(zero_read));
+        drvlite_mem_req huge_read{};
+        huge_read.hdr =
+            make_header(DRVLITE_OP_MEM_KERNEL_READ, sizeof(huge_read));
+        huge_read.address = 0xFFFFF80000000000ULL;
+        huge_read.size = DRVLITE_MAX_TRANSFER + 1;
+        ok &= expect_error("kernel-read-oversize", DRVLITE_OP_MEM_KERNEL_READ,
+                           &huge_read, sizeof(huge_read));
+        drvlite_process_mem_req bad_process{};
+        bad_process.hdr =
+            make_header(DRVLITE_OP_MEM_PROCESS_READ, sizeof(bad_process));
+        bad_process.pid = 0xFFFFFFFF;
+        bad_process.address = 0x7FF000000000ULL;
+        bad_process.size = 16;
+        ok &= expect_error("process-read-bad-pid", DRVLITE_OP_MEM_PROCESS_READ,
+                           &bad_process, sizeof(bad_process));
+        bad_process.pid = GetCurrentProcessId();
+        bad_process.address = 0x0000800000000000ULL; /* non-canonical */
+        ok &= expect_error("process-read-noncanonical",
+                           DRVLITE_OP_MEM_PROCESS_READ, &bad_process,
+                           sizeof(bad_process));
+        drvlite_batch_read_req empty_batch{};
+        empty_batch.hdr =
+            make_header(DRVLITE_OP_MEM_BATCH_READ, sizeof(empty_batch));
+        empty_batch.pid = GetCurrentProcessId();
+        empty_batch.count = 0;
+        ok &= expect_error("batch-read-empty", DRVLITE_OP_MEM_BATCH_READ,
+                           &empty_batch, sizeof(empty_batch));
+        empty_batch.count = DRVLITE_MAX_BATCH_RANGES + 1;
+        ok &= expect_error("batch-read-too-many", DRVLITE_OP_MEM_BATCH_READ,
+                           &empty_batch, sizeof(empty_batch));
+        drvlite_handle_open_req bad_handle{};
+        bad_handle.hdr =
+            make_header(DRVLITE_OP_HANDLE_OPEN, sizeof(bad_handle));
+        bad_handle.pid = 0xFFFFFFFF;
+        bad_handle.access = DRVLITE_ACCESS_FULL;
+        ok &= expect_error("handle-open-bad-pid", DRVLITE_OP_HANDLE_OPEN,
+                           &bad_handle, sizeof(bad_handle));
+        drvlite_infinity_install_req bad_hook{};
+        bad_hook.hdr =
+            make_header(DRVLITE_OP_INFINITY_INSTALL, sizeof(bad_hook));
+        bad_hook.filter_count = DRVLITE_MAX_SSN_FILTER + 1;
+        ok &= expect_error("infinity-install-bad-count",
+                           DRVLITE_OP_INFINITY_INSTALL, &bad_hook,
+                           sizeof(bad_hook));
+        drvlite_module_dump_req bad_dump{};
+        bad_dump.hdr = make_header(DRVLITE_OP_MODULE_DUMP, sizeof(bad_dump));
+        bad_dump.size = DRVLITE_MAX_TRANSFER + 1;
+        ok &= expect_error("module-dump-oversize", DRVLITE_OP_MODULE_DUMP,
+                           &bad_dump, sizeof(bad_dump));
+        drvlite::device_info info;
+        const bool alive = session.query_info(&info) == DRVLITE_OK;
+        std::printf("fuzz: rejected=%d driver-alive=%d\n", ok ? 1 : 0,
+                    alive ? 1 : 0);
+        return ok && alive ? 0 : 1;
     }
     if (command == "shutdown") {
         const int status = session.shutdown();

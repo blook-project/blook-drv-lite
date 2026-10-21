@@ -160,6 +160,19 @@ if os.isdir("src/sdk") and os.isdir("src/cli") and kchannel_ok and kc_has_user t
         set_encodings("utf8")
 end
 
+if os.isdir("examples") and kchannel_ok and kc_has_user and
+        os.isdir("src/sdk") then
+    target("drvlite-example")
+        set_kind("binary")
+        set_languages("cxx20")
+        add_defines("NOMINMAX", "UNICODE", "_UNICODE")
+        add_includedirs({ "include", "src", kc_include })
+        add_files("examples/*.cpp")
+        add_deps("drvlite-sdk")
+        add_cxxflags("/utf-8", "/permissive-", "/W4", {tools = "cl"})
+        set_encodings("utf8")
+end
+
 -- ---------------------------------------------------------------------------
 -- Host unit tests (no kernel, no VM)
 -- ---------------------------------------------------------------------------

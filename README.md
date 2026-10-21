@@ -54,26 +54,47 @@ xmake run drvlite-tests        # host unit tests
 ```
 
 Without `--kchannel_dir` the build looks for `..\blook-kchannel` next to the
-repository. See [docs/architecture.md](docs/architecture.md) for the module
-breakdown and [docs/e2e.md](docs/e2e.md) for the VM end-to-end procedure.
+repository.
+
+Documentation:
+[architecture](docs/architecture.md) ·
+[protocol / 22 opcodes](docs/protocol.md) ·
+[SDK guide](docs/sdk.md) ·
+[safety and limits](docs/safety.md) ·
+[performance](docs/performance.md) ·
+[VM e2e](docs/e2e.md)
 
 ## CLI
 
 ```text
-drvlite-cli load   --image blook-drv-lite.sys   # map + attach (needs kdu/mapper)
-drvlite-cli info
-drvlite-cli read-phys  0x1000 16
-drvlite-cli read-va    0xfffff80000000000 16
-drvlite-cli read-proc  <pid> 0x7ff... 32
-drvlite-cli write-proc <pid> 0x... 2 dad0
-drvlite-cli modules [--pid N]
-drvlite-cli dse [--disable|--restore]
-drvlite-cli handle --pid N --access full
-drvlite-cli hook install|remove|stats|hide-dr --pid N
-drvlite-cli shutdown
+drvlite-cli run --image drvlite.sys \
+    --map-cmd "kdu map --driver {image} --bootstrap {bootstrap}" \
+    -- <command>
+
+commands:
+  info                          build/ABI/features/bases
+  phys                          physical read/write roundtrip (diagnostic page)
+  read-phys/write-phys <a> ...  raw physical access
+  read-kernel/write-kernel <a>  kernel virtual access
+  read-proc/write-proc <pid>    arbitrary-process memory (CR3 walk)
+  process <pid>                 CR3/PEB/image base + validation
+  modules [pid]                 kernel or process module list
+  dump <pid> <a> <n> <file>     module dump
+  dse [--disable|--restore]     code-integrity override
+  handle --pid N [--full] [--kill]
+  thread-dr <pid> <tid>         read thread debug registers
+  hook-test [ssn...]            install/count/remove the syscall trampoline
+  hwbp-test <pid> <tid>         DR cloak before/hidden/restored
+  ssn <ntdll-export>            resolve a syscall number
+  stress <pid> <addr> <n>       1000x mixed memory operations
+  bench [--iterations N]        latency/throughput per mode
+  fuzz                          malformed-request safety checks
+  shutdown                      restore patches, stop the worker
 ```
 
-`drvlite-cli` is documented further in [docs/architecture.md](docs/architecture.md).
+`drvlite-cli` and the SDK are documented in [docs/sdk.md](docs/sdk.md); the
+wire protocol is in [docs/protocol.md](docs/protocol.md). A complete example
+program lives in `examples/read_process_dse.cpp` (built as `drvlite-example`).
 
 ## Signing
 
@@ -85,21 +106,27 @@ suite are test-signed.
 
 ## Supported builds
 
-| Windows | Status |
-|---|---|
-| Windows 10 19041/19045 x64 | supported (validated when a test VM is available) |
-| Windows 11 22000/22621/22631/26100 x64 | supported, e2e validated on 26100 |
-| ARM64 | not supported |
-| HVCI / VBS enabled | DSE patch and code-patching features refuse to run with a clean `DRVLITE_ERR_UNSUPPORTED`; memory read/write still works where the OS allows it |
+| Windows | Driver | DSE override | InfinityHook / DR-hide |
+|---|---|---|---|
+| Windows 10 19041 / 19045 x64 | yes | yes | layout-checked, clean failure otherwise |
+| Windows 11 22000 / 22621 / 22631 x64 | yes | yes | layout-checked, clean failure otherwise |
+| Windows 11 26100 x64 | yes | yes | validated in the e2e VM |
+| KVA shadow (`KiSystemCall64Shadow`) | yes | yes | `DRVLITE_ERR_UNSUPPORTED` (no shadow mapping for the trampoline) |
+| HVCI / VBS enabled | memory r/w where the OS allows | rejected/reported unsupported | unsupported |
+| ARM64 | not supported | — | — |
+
+Capabilities are reported per session through `query_info().features`; every
+unsupported operation returns a status code instead of crashing. See
+[docs/safety.md](docs/safety.md) for the full risk matrix.
 
 ## Safety
 
 All user input crosses the kchannel transport and is length/range validated
 before it is used; invalid parameters return a status, they never fault the
-kernel. Code patching is atomic with respect to other processors through an
-IPI barrier and is always undone by `shutdown`. Anything the driver changes
-in the kernel (DSE flag, handle access, syscall trampoline, function hooks)
-is recorded and restored on shutdown.
+kernel. Anything the driver changes in the kernel (DSE flag, handle access,
+syscall trampoline) is recorded and restored on shutdown; the e2e suite
+exercises this including a 10x map/shutdown/unmap cycle. See
+[docs/safety.md](docs/safety.md) for the honest limits of each feature.
 
 ## License
 

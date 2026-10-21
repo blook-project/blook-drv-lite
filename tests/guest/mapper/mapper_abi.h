@@ -21,6 +21,8 @@
 /* METHOD_BUFFERED (3), FILE_READ_DATA|FILE_WRITE_DATA (3). */
 #define IOCTL_DRVLITE_MAPPER_MAP \
     DRVLITE_MAPPER_CTL_CODE(DRVLITE_MAPPER_DEVICE_TYPE, 0x801, 3, 3)
+#define IOCTL_DRVLITE_MAPPER_UNMAP \
+    DRVLITE_MAPPER_CTL_CODE(DRVLITE_MAPPER_DEVICE_TYPE, 0x802, 3, 3)
 
 #pragma pack(push, 8)
 
@@ -46,6 +48,15 @@ typedef struct drvlite_map_response {
     unsigned int image_size;
     unsigned int reserved;
 } drvlite_map_response;
+
+typedef struct drvlite_unmap_request {
+    unsigned long long mapped_base;
+} drvlite_unmap_request;
+
+typedef struct drvlite_unmap_response {
+    unsigned int status; /* NTSTATUS */
+    unsigned int reserved;
+} drvlite_unmap_response;
 
 #pragma pack(pop)
 

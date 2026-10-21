@@ -42,17 +42,53 @@ bool read_file(const char* path, std::vector<uint8_t>* bytes) {
 int main(int argc, char** argv) {
     const char* image_path = nullptr;
     const char* bootstrap_path = nullptr;
+    const char* unmap_text = nullptr;
     for (int index = 1; index < argc; ++index) {
         if (std::strcmp(argv[index], "--image") == 0 && index + 1 < argc) {
             image_path = argv[++index];
         } else if (std::strcmp(argv[index], "--bootstrap") == 0 &&
                    index + 1 < argc) {
             bootstrap_path = argv[++index];
+        } else if (std::strcmp(argv[index], "--unmap") == 0 &&
+                   index + 1 < argc) {
+            unmap_text = argv[++index];
         }
+    }
+    if (unmap_text != nullptr) {
+        HANDLE device = CreateFileA(
+            DRVLITE_MAPPER_WIN32_NAME, GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (device == INVALID_HANDLE_VALUE) {
+            std::printf("cannot open mapper device (error %lu)\n",
+                        GetLastError());
+            return 1;
+        }
+        drvlite_unmap_request request{};
+        request.mapped_base = static_cast<unsigned long long>(
+            std::strtoull(unmap_text, nullptr, 0));
+        drvlite_unmap_response response{};
+        DWORD returned = 0;
+        const BOOL ok = DeviceIoControl(
+            device, static_cast<DWORD>(IOCTL_DRVLITE_MAPPER_UNMAP), &request,
+            static_cast<DWORD>(sizeof(request)), &response,
+            static_cast<DWORD>(sizeof(response)), &returned, nullptr);
+        const DWORD error = GetLastError();
+        CloseHandle(device);
+        if (!ok) {
+            std::printf("unmap ioctl failed (error %lu)\n", error);
+            return 1;
+        }
+        if (response.status != 0) {
+            std::printf("unmap status 0x%08x\n", response.status);
+            return 1;
+        }
+        std::printf("unmapped 0x%llx\n", request.mapped_base);
+        return 0;
     }
     if (image_path == nullptr || bootstrap_path == nullptr) {
         std::printf(
-            "usage: drvlite-mapper-cli --image <sys> --bootstrap <file>\n");
+            "usage: drvlite-mapper-cli --image <sys> --bootstrap "
+            "<file> | --unmap <base>\n");
         return 2;
     }
     std::vector<uint8_t> image;

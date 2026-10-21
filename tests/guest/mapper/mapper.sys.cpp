@@ -32,6 +32,15 @@ struct mapper_device_extension {
     PDEVICE_OBJECT device;
 };
 
+/* Images mapped by this harness, so the e2e stress loop can unmap them. */
+constexpr dword_t kMaxMappedImages = 128;
+struct mapped_image_record {
+    qword_t base;
+    dword_t size;
+};
+mapped_image_record g_mapped_images[kMaxMappedImages];
+KSPIN_LOCK g_mapped_lock;
+
 /* Raw little-endian readers. */
 word_t read_u16(const byte_t* data, dword_t offset) {
     return static_cast<word_t>(data[offset] | (data[offset + 1] << 8));
@@ -300,6 +309,7 @@ NTSTATUS device_control(PDEVICE_OBJECT device, PIRP irp);
 extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT driver_object,
                                 PUNICODE_STRING registry_path) {
     UNREFERENCED_PARAMETER(registry_path);
+    KeInitializeSpinLock(&g_mapped_lock);
     UNICODE_STRING device_name;
     RtlInitUnicodeString(&device_name, L"\\Device\\DrvliteMapper");
     PDEVICE_OBJECT device = nullptr;
@@ -357,9 +367,47 @@ NTSTATUS complete_irp(PIRP irp, NTSTATUS status, ULONG information) {
 NTSTATUS device_control(PDEVICE_OBJECT device, PIRP irp) {
     UNREFERENCED_PARAMETER(device);
     PIO_STACK_LOCATION stack = IoGetCurrentIrpStackLocation(irp);
-    if (stack->MajorFunction != IRP_MJ_DEVICE_CONTROL ||
-        stack->Parameters.DeviceIoControl.IoControlCode !=
-            IOCTL_DRVLITE_MAPPER_MAP) {
+    if (stack->MajorFunction != IRP_MJ_DEVICE_CONTROL) {
+        return complete_irp(irp, STATUS_INVALID_DEVICE_REQUEST, 0);
+    }
+    if (stack->Parameters.DeviceIoControl.IoControlCode ==
+        IOCTL_DRVLITE_MAPPER_UNMAP) {
+        const ULONG input_size =
+            stack->Parameters.DeviceIoControl.InputBufferLength;
+        const ULONG output_size =
+            stack->Parameters.DeviceIoControl.OutputBufferLength;
+        if (irp->AssociatedIrp.SystemBuffer == nullptr ||
+            input_size < sizeof(drvlite_unmap_request) ||
+            output_size < sizeof(drvlite_unmap_response)) {
+            return complete_irp(irp, STATUS_BUFFER_TOO_SMALL, 0);
+        }
+        const auto* request = static_cast<const drvlite_unmap_request*>(
+            irp->AssociatedIrp.SystemBuffer);
+        auto* response = static_cast<drvlite_unmap_response*>(
+            irp->AssociatedIrp.SystemBuffer);
+        const qword_t base = request->mapped_base;
+        NTSTATUS status = STATUS_NOT_FOUND;
+        if (base != 0 && base >= 0xFFFF800000000000ULL) {
+            KIRQL irql = KeAcquireSpinLockRaiseToDpc(&g_mapped_lock);
+            for (dword_t index = 0; index < kMaxMappedImages; ++index) {
+                if (g_mapped_images[index].base == base) {
+                    g_mapped_images[index].base = 0;
+                    g_mapped_images[index].size = 0;
+                    status = STATUS_SUCCESS;
+                    break;
+                }
+            }
+            KeReleaseSpinLock(&g_mapped_lock, irql);
+            if (NT_SUCCESS(status)) {
+                ExFreePoolWithTag(reinterpret_cast<void*>(base), kMapperTag);
+            }
+        }
+        RtlZeroMemory(response, sizeof(*response));
+        response->status = static_cast<unsigned int>(status);
+        return complete_irp(irp, status, sizeof(*response));
+    }
+    if (stack->Parameters.DeviceIoControl.IoControlCode !=
+        IOCTL_DRVLITE_MAPPER_MAP) {
         return complete_irp(irp, STATUS_INVALID_DEVICE_REQUEST, 0);
     }
     const ULONG input_size =
@@ -461,11 +509,25 @@ NTSTATUS device_control(PDEVICE_OBJECT device, PIRP irp) {
     response->method = method;
     response->mapped_base = reinterpret_cast<unsigned long long>(mapped);
     response->image_size = image_size;
+    if (!NT_SUCCESS(entry_status)) {
+        /* The driver failed to initialise; do not leave a mapped image. */
+        ExFreePoolWithTag(mapped, kMapperTag);
+        return complete_irp(irp, entry_status, sizeof(*response));
+    }
+    {
+        KIRQL irql = KeAcquireSpinLockRaiseToDpc(&g_mapped_lock);
+        for (dword_t index = 0; index < kMaxMappedImages; ++index) {
+            if (g_mapped_images[index].base == 0) {
+                g_mapped_images[index].base = reinterpret_cast<qword_t>(mapped);
+                g_mapped_images[index].size = image_size;
+                break;
+            }
+        }
+        KeReleaseSpinLock(&g_mapped_lock, irql);
+    }
     DbgPrint("[drvlite-mapper] mapped at %p (method %u), entry status 0x%x\n",
              mapped, method, entry_status);
-    return complete_irp(
-        irp, NT_SUCCESS(entry_status) ? STATUS_SUCCESS : entry_status,
-        sizeof(*response));
+    return complete_irp(irp, STATUS_SUCCESS, sizeof(*response));
 }
 
 }  // namespace
