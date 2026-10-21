@@ -16,7 +16,7 @@ set_project("blook-drv-lite")
 -- The project version lives in version.txt (read by the release workflow).
 -- xmake 3.0 sandboxes the project script and no longer exposes file I/O, so
 -- keep this literal in sync; CI verifies the two match.
-local version = "1.0.2"
+local version = "1.0.3"
 set_version(version, {build = "%Y%m%d"})
 
 add_requires("gtest 1.17.0")

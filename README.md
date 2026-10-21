@@ -107,11 +107,18 @@ Kernel images are signed with the real SPC signer assets in `signer/`
 required and no private key is stored in this repository; CI receives the PFX
 through the `SPC_PFX_BASE64` / `SPC_PFX_PASSWORD` repository secrets.
 
-CI runs a **real kernel-load smoke job** on `windows-latest`: it signs the
-built `drvlite.sys` with the SPC signer, imports the TSA root/cross-signing
-chain, loads the driver with `sc create/start`, drives it through
-`drvlite-cli` (`info`, then a kernel read that must return the MZ header), and
-requires the service to reach `RUNNING` before stopping and deleting it.
+CI runs the **full feature e2e matrix** on a stock `windows-latest` runner
+(`host-e2e` job): the built `drvlite.sys` is signed with the SPC signer, the
+TSA root/cross-signing chain is trusted, `signtool verify /kp` is asserted,
+the driver is loaded with `sc create/start` and exercised through
+`drvlite-cli` — physical/kernel/process (CR3) read+write, page crossings,
+63 KiB chunking, module dump, DSE patch/restore values, full-permission
+handles, invalid-input fuzz, 1000x load/unload and unload trace scan. The
+matrix result (`ci-e2e-result.json`), `bcdedit.txt` and `signtool-kp.txt` are
+uploaded as CI artifacts; cases that cannot run on hosted runners (KVA-shadow
+InfinityHook, DR visibility, DSE unsigned-load policy, mapper) are documented
+skips with reasons. The same matrix also runs inside a bvmenv VM
+(`scripts/e2e.ps1`).
 
 Note: the shipped signer's SHA-256 digest path currently produces an invalid
 Authenticode page-hash attribute (`HashMismatch`), so `--sha1` is used. Manual
