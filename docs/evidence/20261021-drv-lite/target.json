@@ -1,7 +1,7 @@
 {
-  "pid": 7500,
-  "tid": 7440,
-  "buffer": "0x2151af00000",
+  "pid": 3316,
+  "tid": 3144,
+  "buffer": "0x14c82bf0000",
   "size": 16384,
   "seconds": 1800,
   "pattern": "DRVLITE!"

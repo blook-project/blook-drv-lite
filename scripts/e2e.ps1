@@ -52,7 +52,11 @@ function Log([string]$text) {
 
 function Find-Bvmenv() {
     if ($Bvmenv -and (Test-Path $Bvmenv)) { return $Bvmenv }
+    # Prefer the fixed 0.1.12 dist binaries: 0.1.9-0.1.11 have a guest_mkdirs
+    # stack-overflow recursion bug that makes exec/push flaky.
     $candidates = @(
+        (Join-Path $RepoRoot "..\blook-vmware-environment\dist\bvmenv-6e83eb6.exe"),
+        (Join-Path $RepoRoot "..\blook-vmware-environment\dist\bvmenv-latest.exe"),
         (Join-Path $RepoRoot "..\blook-vmware-environment\build\windows\x64\release\bvmenv.exe"),
         (Join-Path $RepoRoot "..\blook-vmware-environment\build\windows\x64\releasedbg\bvmenv.exe")
     )
