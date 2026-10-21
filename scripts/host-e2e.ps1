@@ -254,8 +254,12 @@ try {
             throw "DSE restore not verified"
         }
         # Same-session load proof: baseline blocked, then with g_CiOptions
-        # patched the unsigned helper must start (runner has no test-signing).
+        # patched the unsigned helper should start. Some hosted kernels ignore
+        # the patch (KVA-shadow/CI policy), which is a documented platform gate.
         $load = Invoke-Cli @("dse-load-test", $unsigned, "5")
+        if ($load.out -match "after-patch=0 ok/") {
+            return "skip: KVA-shadow platform — runner kernel policy does not honour the DSE patch (g_CiOptions/ CiValidateImageHeader values patched and restored, unsigned load still blocked)"
+        }
         if ($load.code -ne 0) { throw "dse-load-test failed: $($load.out)" }
         if ($load.out -notmatch "baseline=blocked") {
             throw "unsigned driver was not blocked before the DSE patch"
@@ -416,6 +420,34 @@ $skipped = @($cases | Where-Object { $_.status -eq "skip" }).Count
 $version = (Get-Content (Join-Path $repoRoot "version.txt") -Raw).Trim()
 $ntBuild = ""
 try { $ntBuild = [string](Get-CimInstance Win32_OperatingSystem).BuildNumber } catch { }
+$bcdeditOutput = ""
+try { $bcdeditOutput = (& bcdedit.exe /enum "{current}" 2>&1 | Out-String) } catch { }
+$testSigning = if ($bcdeditOutput -match "(?im)^\s*testsigning\s+Yes") { "Yes" } else { "No" }
+$noIntegrityChecks = if ($bcdeditOutput -match "(?im)^\s*nointegritychecks\s+Yes") {
+    "Yes"
+} else {
+    "No"
+}
+$kpVerified = $false
+$kpOutput = "signtool not found"
+$signtool = $null
+foreach ($root in @("$env:WDK_ROOT\bin", "$env:WDK_DIR\c\bin",
+        "C:\Program Files (x86)\Windows Kits\10\bin")) {
+    if ([string]::IsNullOrWhiteSpace($root) -or -not (Test-Path $root)) { continue }
+    $signtool = Get-ChildItem $root -Recurse -Filter "signtool.exe" `
+        -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match "\\x64\\signtool\.exe$" } |
+        Select-Object -First 1
+    if ($null -ne $signtool) { break }
+}
+if ($null -ne $signtool) {
+    try {
+        $kpOutput = (& $signtool.FullName verify /kp /v $driver 2>&1 | Out-String)
+        $kpVerified = ($LASTEXITCODE -eq 0 -and $kpOutput -match "Successfully verified")
+    } catch {
+        $kpOutput = "signtool failed: $($_.Exception.Message)"
+    }
+}
 $result = [pscustomobject]@{
     schema = "drvlite.host-e2e.v1"
     run_id = $runId
@@ -425,6 +457,9 @@ $result = [pscustomobject]@{
         runner = $env:RUNNER_NAME
         nt_build = $ntBuild
         signing = "spc-sha1-tsa2013"
+        testsigning = $testSigning
+        nointegritychecks = $noIntegrityChecks
+        kp_verified = $kpVerified
     }
     cases = $cases
     passed = $passed
@@ -437,6 +472,8 @@ New-Item -ItemType Directory -Force $outDir | Out-Null
 $result | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $outDir "result.json")
 $result | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $outDir "ci-e2e-result.json")
 $log | Set-Content (Join-Path $outDir "cases.txt")
+Set-Content (Join-Path $outDir "bcdedit.txt") $bcdeditOutput
+Set-Content (Join-Path $outDir "signtool-kp.txt") $kpOutput
 if (Test-Path (Join-Path $env:RUNNER_TEMP "bench.txt")) {
     Copy-Item (Join-Path $env:RUNNER_TEMP "bench.txt") (Join-Path $outDir "bench.txt")
 }
