@@ -399,7 +399,7 @@ Run-Case "handle_protected_process" {
     if ($out -match "terminate: yes") {
         return "PPL process $pid terminated through a full-permission handle"
     }
-    return "PPL process $pid: GrantedAccess raised to 0x1fffff; terminate blocked by PPL policy (expected on hardened AV)"
+    return "PPL process ${pid}: GrantedAccess raised to 0x1fffff; terminate blocked by PPL policy (expected on hardened AV)"
 }
 
 Run-Case "shutdown_with_hooks_armed" {
