@@ -616,10 +616,13 @@ if ($screenshot.ExitCode -ne 0) {
 $passed = @($cases | Where-Object { $_.status -eq "pass" }).Count
 $failed = @($cases | Where-Object { $_.status -eq "fail" }).Count
 $skipped = @($cases | Where-Object { $_.status -eq "skip" }).Count
+$bvmenvVersion = ((Invoke-Bv @("--version") 20).Output -split "`n" |
+    Where-Object { $_.Trim() -ne "" } | Select-Object -First 1).Trim()
 $result = [pscustomobject]@{
     schema = "bvmenv.e2e.v1"
     run_id = (Get-Date -Format "yyyyMMdd'T'HHmmss'Z'")
     version = (Get-Content (Join-Path $RepoRoot "version.txt") -Raw).Trim()
+    bvmenv_version = $bvmenvVersion
     vm = $Vm
     guest = [pscustomobject]@{
         nt_build = ""

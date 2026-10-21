@@ -26,7 +26,7 @@ docs/evidence/<yyyyMMdd>-drv-lite/
   mapper refuse unless `DRVLITE_ALLOW_KERNEL_LIVE=1` is set by the e2e runner
   inside a guest command; `scripts/check-host-clean.ps1` verifies the host
   afterwards.
-- Large raw logs are kept outside the repository (or reduced to head/tail plus
+- `result.json` records the `bvmenv_version` that produced the run; only\n  bvmenv 0.1.8 or 0.1.12+ (the `guest_mkdirs` recursion bug in 0.1.9-0.1.11\n  made exec/push flaky) is trusted for evidence.\n- Large raw logs are kept outside the repository (or reduced to head/tail plus
   a sha256) so the repo stays small; the JSON + cases log + screenshot are the
   canonical artifacts.
 - A run with any failing case has `"pass": false`; the VM is reset and the
