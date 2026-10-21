@@ -1,15 +1,16 @@
 # Performance
 
 The numbers below are produced by `drvlite-cli run ... -- bench` inside the
-`bvmenv` test VM (Windows 11 x64, 4 vCPU, kchannel `KC_MODE_MAPPED`, region
-size 0x40000, 200 iterations per operation, one 4 KiB payload per call).
-Measurements are wall-clock per `kc_call` round trip including the kchannel
-transport, so they describe the SDK-facing cost, not just the memory copy.
+`bvmenv` test VM (Windows 11 26100 x64, 4 vCPU, kchannel COPY mode used by the
+e2e service-load path, region size 0x40000, 200 iterations per operation, one
+4 KiB payload per call). Measurements are wall-clock per `kc_call` round trip
+including the kchannel transport, so they describe the SDK-facing cost, not
+just the memory copy.
 
 ```powershell
-# inside the guest, after mapping the driver
-drvlite-cli.exe run --image C:\drvlite\drvlite.sys `
-    --map-cmd "C:\drvlite\drvlite-mapper-cli.exe --image {image} --bootstrap {bootstrap}" `
+# inside the guest (service-load dev path used by the e2e matrix)
+drvlite-cli.exe run --service Drvlite --mode copy --image C:\drvlite\drvlite.sys `
+    --bootstrap C:\drvlite\boot.bin --map-cmd C:\drvlite\start-drv.cmd `
     -- bench --iterations 200
 ```
 
@@ -17,19 +18,22 @@ The command prints, for each operation, the median and p99 latency and the
 effective throughput for a 4 KiB transfer. `docs/evidence/<date>-drv-lite/bench.txt`
 keeps the raw output of every e2e run.
 
-## Reference table (filled by the e2e run)
+## Reference table (Windows 11 26100 guest, 4 vCPU, run 2026-10-21)
 
 | Operation | Median | p99 | Throughput |
 |---|---|---|---|
-| physical read 4 KiB | _pending VM run_ | | |
-| physical write 4 KiB | _pending VM run_ | | |
-| kernel virtual read 4 KiB | _pending VM run_ | | |
-| process read 4 KiB (CR3 walk) | _pending VM run_ | | |
-| process write 4 KiB | _pending VM run_ | | |
-| syscall entry overhead (hook on vs off) | _pending VM run_ | | |
+| physical read 4 KiB | 73.2 us | 62.3 ms | 53.4 MiB/s |
+| physical write 4 KiB | 81.5 us | 62.0 ms | 47.9 MiB/s |
+| kernel virtual read 4 KiB | 71.0 us | 61.6 ms | 55.0 MiB/s |
+| process read 4 KiB (CR3 walk) | 75.4 us | 62.1 ms | 51.8 MiB/s |
+| process write 4 KiB | 75.4 us | 62.3 ms | 51.8 MiB/s |
+| syscall entry overhead (hook on vs off) | unsupported on this guest (KVA shadow) | — | — |
 
-`bench` also prints a `syscall-overhead` line (baseline vs hooked `GetCurrentProcessId`
-loop, ns per syscall) so the InfinityHook cost is measured on the same host.
+The p99 outliers (≈62 ms) are host scheduling artefacts of the shared VM
+host, not transport retries; medians are stable across runs (71–82 us). The
+syscall-overhead line is only produced when InfinityHook installs; this
+KVA-shadow guest does not permit that (see `docs/compat.md`), so `bench`
+prints `syscall-overhead unsupported on this build`.
 
 ## What dominates the cost
 

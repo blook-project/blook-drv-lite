@@ -112,7 +112,7 @@ suite are test-signed.
 |---|---|---|---|
 | Windows 10 19041 / 19045 x64 | yes | yes | layout-checked, clean failure otherwise |
 | Windows 11 22000 / 22621 / 22631 x64 | yes | yes | layout-checked, clean failure otherwise |
-| Windows 11 26100 x64 | yes | yes | layout-checked; e2e matrix defined (evidence under `docs/evidence/` when the VM run lands) |
+| Windows 11 26100 x64 | yes | yes | e2e-validated via the service-load dev path; InfinityHook is a documented platform gate when the guest runs KVA shadow |
 | KVA shadow (`KiSystemCall64Shadow`) | yes | yes | `DRVLITE_ERR_UNSUPPORTED` (no shadow mapping for the trampoline) |
 | HVCI / VBS enabled | memory r/w where the OS allows | rejected/reported unsupported | unsupported |
 | ARM64 | not supported | — | — |

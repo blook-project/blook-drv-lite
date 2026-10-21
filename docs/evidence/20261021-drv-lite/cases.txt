@@ -1,0 +1,1035 @@
+blook-drv-lite e2e 2026-10-21T15:53:07.2412721+08:00
+=== building release artefacts
+=== signing driver + test mapper
+  signed: D:\blook-kernel-project\blook-drv-lite\build\windows\x64\release\drvlite.sys
+    signer: CN="BEIJING XINDA HUANYU NETWORK SECURITY TECHNOLOGY CO.,LTD", OU=Digital ID Class 3 - Microsoft Software Validation v2, O="BEIJING XINDA HUANYU NETWORK SECURITY TECHNOLOGY CO.,LTD", L=" Beijing", S=Beijing, C=CN
+    digest: SHA-1, PKCS#7 7168 bytes, countersignature @ 2013-01-01T00:00:00Z
+  signed: D:\blook-kernel-project\blook-drv-lite\build\windows\x64\release\drvlite-mapper.sys
+    signer: CN="BEIJING XINDA HUANYU NETWORK SECURITY TECHNOLOGY CO.,LTD", OU=Digital ID Class 3 - Microsoft Software Validation v2, O="BEIJING XINDA HUANYU NETWORK SECURITY TECHNOLOGY CO.,LTD", L=" Beijing", S=Beijing, C=CN
+    digest: SHA-1, PKCS#7 7168 bytes, countersignature @ 2013-01-01T00:00:00Z
+=== reusing running VM vm-drv-lite (no reset)
+start: already running: vm-drv-lite
+=== pushing artefacts
+  guest> sc stop Drvlite
+    exit_code    : 1060
+    [SC] OpenService ʧ�� 1060:
+    
+    
+    
+    ָ���ķ���δ��װ��
+  guest> sc delete Drvlite
+    exit_code    : 1060
+    [SC] OpenService ʧ�� 1060:
+    
+    
+    
+    ָ���ķ���δ��װ��
+  guest> if not exist C:\drvlite mkdir C:\drvlite
+    exit_code    : 0
+  guest> sc create Drvlite type= kernel binPath= C:\drvlite\drvlite.sys
+    exit_code    : 0
+    [SC] CreateService �ɹ�
+  guest> del C:\drvlite\target.json
+    exit_code    : 0
+    --- stderr ---
+    �Ҳ��� C:\drvlite\target.json
+  guest> del C:\drvlite\target-changed.txt
+    exit_code    : 0
+    --- stderr ---
+    �Ҳ��� C:\drvlite\target-changed.txt
+  guest> start /b C:\drvlite\drvlite-target.exe --out C:\drvlite\target.json --changed C:\drvlite\target-changed.txt --seconds 1800
+    exit_code    : 0
+[PASS] target_process_start pid=1064 tid=5688 buffer=0x14bbf7d0000
+  guest> del C:\drvlite\target2.json
+    exit_code    : 0
+    --- stderr ---
+    �Ҳ��� C:\drvlite\target2.json
+  guest> start /b C:\drvlite\drvlite-target.exe --out C:\drvlite\target2.json --changed C:\drvlite\target2-changed.txt --seconds 300
+    exit_code    : 0
+[PASS] target_process_second pid=5916
+  guest> C:\drvlite\run-cli.cmd info
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    nt build       : 26200
+    
+    abi            : 1.0
+    
+    features       : 0x000003ff
+    
+    driver base    : 0xfffff8031b1d0000 (90112 bytes)
+    
+    kernel base    : 0xfffff80382e00000 (21299200 bytes)
+    
+    client pid     : 3464
+    
+    client eprocess: 0xffffe78192894080
+[PASS] manual_map_attach nt build       : 26200; features       : 0x000003ff; driver base    : 0xfffff8031b1d0000 (90112 bytes)
+  guest> C:\drvlite\run-cli.cmd phys
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    diagnostic page: va=0xffffe781926ff000 pa=0x1876ff000 magic=DRVLITE-PHYS
+    
+    physical read/write roundtrip: ok (0xcccccccc -> 0xdeadbeef -> 0xdeadbeef)
+[PASS] physical_read_write diagnostic page roundtrip ok
+  guest> C:\drvlite\run-cli.cmd info
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    nt build       : 26200
+    
+    abi            : 1.0
+    
+    features       : 0x000003ff
+    
+    driver base    : 0xfffff8031aa20000 (90112 bytes)
+    
+    kernel base    : 0xfffff80382e00000 (21299200 bytes)
+    
+    client pid     : 6296
+    
+    client eprocess: 0xffffe78193396080
+  guest> C:\drvlite\run-cli.cmd read-kernel 0xfffff80382e00000 2
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    
+    
+    00000000  4d 5a
+[PASS] kernel_read_write ntoskrnl at 0xfffff80382e00000, MZ verified
+  guest> C:\drvlite\run-cli.cmd read-proc 1064 0x14bbf7d0000 8
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    read_process: ok
+    
+    
+    
+    00000000  44 52 56 4c 49 54 45 21
+  guest> C:\drvlite\run-cli.cmd write-proc 1064 0x14bbf7d0000 "43 52 33 21"
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    write_process: ok
+  guest> C:\drvlite\run-cli.cmd read-proc 1064 0x14bbf7d0000 4
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    read_process: ok
+    
+    
+    
+    00000000  43 52 33 21
+  guest> type C:\drvlite\target-changed.txt
+    exit_code    : 0
+    0x21335243
+[PASS] process_memory_cr3 pattern matched, wrote 43523321, target observed 0x21335243
+  guest> C:\drvlite\run-cli.cmd modules 1064
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    0x7ff73dd00000  drvlite-target.exe    32768  drvlite-target.exe
+    
+    0x7ffc34160000  ntdll.dll     2519040  ntdll.dll
+    
+    0x7ffc32780000  kernel32.dll   823296  kernel32.dll
+    
+    0x7ffc31a20000  kernelbase.dll  4124672  kernelbase.dll
+    
+    0x7ffc2e3f0000  apphelp.dll    651264  apphelp.dll
+    
+    0x7ffc318d0000  ucrtbase.dll  1355776  ucrtbase.dll
+    
+    0x7ffc277a0000  vcruntime140.dll   122880  vcruntime140.dll
+    
+    total: 7
+[PASS] process_module_list ntdll listed
+  guest> sc stop DrvliteUnsigned
+    exit_code    : 1060
+    [SC] OpenService ʧ�� 1060:
+    
+    
+    
+    ָ���ķ���δ��װ��
+  guest> sc delete DrvliteUnsigned
+    exit_code    : 1060
+    [SC] OpenService ʧ�� 1060:
+    
+    
+    
+    ָ���ķ���δ��װ��
+  guest> sc create DrvliteUnsigned type= kernel binPath= C:\drvlite\drvlite-unsigned.sys
+    exit_code    : 0
+    [SC] CreateService �ɹ�
+  guest> sc start DrvliteUnsigned
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: DrvliteUnsigned 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              :
+  guest> sc stop DrvliteUnsigned
+    exit_code    : 1052
+    [SC] ControlService ʧ�� 1052:
+    
+    
+    
+    ����Ŀؼ��Դ˷�����Ч��
+  guest> sc delete DrvliteUnsigned
+    exit_code    : 0
+    [SC] DeleteService �ɹ�
+  guest> C:\drvlite\run-cli.cmd dse-cycle
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    dse-cycle: supported=1 before=0xf disable=0 patched=1 after=0x0 restore=0 restored=0 cur=0xf
+[PASS] dse_disable_load_unsigned test-signing guest allows unsigned load; DSE disable/restore verified by value
+  guest> C:\drvlite\run-cli.cmd handle --pid 5916 --full --kill
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    handle   : 0x144
+    
+    granted  : 0x1fffff
+    
+    terminate: yes (error 2)
+[PASS] handle_full_access terminated disposable process 5916 through full handle
+  guest> C:\drvlite\run-cli.cmd ssn NtQueryInformationThread
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    NtQueryInformationThread ssn=37
+  guest> C:\drvlite\run-cli.cmd hook-test 37
+    exit_code    : 1
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    hook_install: unsupported (16)
+[SKIP] infinityhook_counters skip: InfinityHook entry pattern unsupported on this guest build (documented platform gate)
+  guest> C:\drvlite\run-cli.cmd hwbp-test 1064 5688
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    before: dr0=0x0 dr7=0x401 ok=1
+    
+    hidden: dr0=0x0 dr7=0x401 ok=1
+    
+    restored: dr0=0x0 dr7=0x401 ok=1
+    
+    hwbp-test: hide=0 before=1 hidden=1 restored=1
+[SKIP] hwbp_detection_bypass skip: the guest does not expose debug registers through GetThreadContext, so hiding cannot be observed
+  guest> C:\drvlite\run-cli.cmd fuzz
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    unknown-opcode                 not-found                rejected
+    
+    bad-request-magic              invalid-parameter        rejected
+    
+    query-info-wrong-size          invalid-parameter        rejected
+    
+    kernel-read-zero-size          invalid-parameter        rejected
+    
+    kernel-read-oversize           invalid-parameter        rejected
+    
+    process-read-bad-pid           not-found                rejected
+    
+    process-read-noncanonical      invalid-parameter        rejected
+    
+    batch-read-empty               invalid-parameter        rejected
+    
+    batch-read-too-many            invalid-parameter        rejected
+    
+    handle-open-bad-pid            internal-error           rejected
+    
+    infinity-install-bad-count     invalid-parameter        rejected
+    
+    module-dump-oversize           invalid-parameter        rejected
+    
+    fuzz: rejected=1 driver-alive=1
+[PASS] negative_input_fuzz malformed requests rejected, driver alive
+  guest> C:\drvlite\run-cli.cmd stress 1064 0x14bbf7d0000 1000
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    stress: 1000 iterations, 0 failures
+[PASS] stress_memory_ops 1000 mixed operations, 0 failures
+  guest> C:\drvlite\run-cli.cmd bench --iterations 200
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    phys-read-4k             median=   73.20 us  p99=62316.60 us      53.4 MiB/s  failures=0
+    
+    kernel-read-4k           median=   71.00 us  p99=61632.80 us      55.0 MiB/s  failures=0
+    
+    process-read-4k          median=   75.40 us  p99=62069.70 us      51.8 MiB/s  failures=0
+    
+    process-write-4k         median=   75.40 us  p99=62300.30 us      51.8 MiB/s  failures=0
+    
+    phys-write-4k            median=   81.50 us  p99=62021.90 us      47.9 MiB/s  failures=0
+    
+    syscall-overhead        unsupported on this build
+    
+    bench: 200 iterations, 0 failures
+[PASS] perf_benchmark phys-read-4k             median=   73.20 us  p99=62316.60 us      53.4 MiB/s  failures=0; kernel-read-4k           median=   71.00 us  p99=61632.80 us      55.0 MiB/s  failures=0; process-read-4k          median=   75.40 us  p99=62069.70 us      51.8 MiB/s  failures=0; process-write-4k         median=   75.40 us  p99=62300.30 us      51.8 MiB/s  failures=0; phys-write-4k            median=   81.50 us  p99=62021.90 us      47.9 MiB/s  failures=0
+  guest> C:\drvlite\run-cli.cmd memtest 1064 0x14bbf7d0000
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    memtest: page-crossing, non-present, non-canonical, 2m-boundary and chunked reads: ok
+[PASS] page_paths_and_crossings 4k crossing, non-present, non-canonical, 2m boundary and chunked kernel read ok
+  guest> C:\drvlite\run-cli.cmd dse-load-test C:\drvlite\drvlite-unsigned.sys 20
+    exit_code    : 1
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    dse-load-test: baseline=blocked after-patch=0 ok/20 failed, memory_failures=0 restore=ok
+[SKIP] dse_concurrent_load skip: guest test-signing requires a signed image; DSE value patch/restore is verified by dse_disable_load_unsigned
+  guest> tasklist
+    exit_code    : 0
+    
+    
+    ӳ������                       PID �Ự��              �Ự#       �ڴ�ʹ�� 
+    
+    ========================= ======== ================ =========== ============
+    
+    System Idle Process              0 Services                   0          8 K
+    
+    System                           4 Services                   0        164 K
+    
+    Registry                       124 Services                   0     61,800 K
+    
+    smss.exe                       432 Services                   0      1,676 K
+    
+    csrss.exe                      556 Services                   0      7,892 K
+    
+    wininit.exe                    664 Services                   0      9,888 K
+    
+    csrss.exe                      676 Console                    1      7,456 K
+    
+    winlogon.exe                   752 Console                    1     18,236 K
+    
+    services.exe                   816 Services                   0     11,436 K
+    
+    lsass.exe                      832 Services                   0     27,324 K
+    
+    svchost.exe                    964 Services                   0     34,204 K
+    
+    fontdrvhost.exe                996 Console                    1      8,092 K
+    
+    fontdrvhost.exe               1004 Services                   0      5,700 K
+    
+    svchost.exe                    412 Services                   0     16,780 K
+    
+    svchost.exe                    980 Services                   0     13,884 K
+    
+    dwm.exe                       1056 Console                    1     77,468 K
+    
+    svchost.exe                   1160 Services                   0     12,344 K
+    
+    svchost.exe                   1168 Services                   0     17,060 K
+    
+    svchost.exe                   1176 Services                   0      9,572 K
+    
+    svchost.exe                   1200 Services                   0      8,472 K
+    
+    svchost.exe                   1316 Services                   0     13,500 K
+    
+    svchost.exe                   1324 Services                   0     11,420 K
+    
+    svchost.exe                   1404 Services                   0      9,244 K
+    
+    svchost.exe                   1456 Services                   0     17,532 K
+    
+    svchost.exe                   1544 Services                   0     14,692 K
+    
+    svchost.exe                   1556 Services                   0      9,664 K
+    
+    svchost.exe                   1660 Services                   0     23,536 K
+    
+    svchost.exe                   1716 Services                   0     13,416 K
+    
+    svchost.exe                   1780 Services                   0     10,596 K
+    
+    svchost.exe                   1836 Services                   0      8,044 K
+    
+    svchost.exe                   1844 Services                   0     10,276 K
+    
+    svchost.exe                   1852 Services                   0     12,264 K
+    
+    svchost.exe                   1988 Services                   0     11,668 K
+    
+    svchost.exe                   2040 Services                   0     17,480 K
+    
+    svchost.exe                   2056 Services                   0     10,360 K
+    
+    svchost.exe                   2068 Services                   0     10,700 K
+    
+    svchost.exe                   2188 Services                   0     13,020 K
+    
+    svchost.exe                   2228 Services                   0     10,072 K
+    
+    svchost.exe                   2288 Services                   0      9,868 K
+    
+    svchost.exe                   2296 Services                   0      8,120 K
+    
+    dllhost.exe                   2368 Services                   0     10,204 K
+    
+    svchost.exe                   2416 Services                   0      9,908 K
+    
+    svchost.exe                   2492 Services                   0     12,552 K
+    
+    svchost.exe                   2536 Services                   0     18,552 K
+    
+    spoolsv.exe                   2672 Services                   0     21,420 K
+    
+    svchost.exe                   2736 Services                   0     23,896 K
+    
+    svchost.exe                   2796 Services                   0     10,772 K
+    
+    svchost.exe                   2876 Services                   0     14,776 K
+    
+    svchost.exe                   2884 Services                   0     23,780 K
+    
+    svchost.exe                   2892 Services                   0     19,396 K
+    
+    svchost.exe                   2904 Services                   0     15,912 K
+    
+    svchost.exe                   2984 Services                   0      7,640 K
+    
+    VGAuthService.exe             2996 Services                   0     14,392 K
+    
+    vmtoolsd.exe                  3012 Services                   0     29,388 K
+    
+    svchost.exe                   3020 Services                   0     22,148 K
+    
+    svchost.exe                   3036 Services                   0     20,792 K
+    
+    svchost.exe                   3044 Services                   0     10,288 K
+    
+    vm3dservice.exe               3052 Services                   0      9,068 K
+    
+    MsMpEng.exe                   3068 Services                   0    274,552 K
+    
+    svchost.exe                   2464 Services                   0     12,508 K
+    
+    vm3dservice.exe               3244 Console                    1      9,952 K
+    
+    dllhost.exe                   3588 Services                   0     18,432 K
+    
+    WmiPrvSE.exe                  3756 Services                   0     20,104 K
+    
+    msdtc.exe                     3840 Services                   0     14,064 K
+    
+    svchost.exe                   4000 Services                   0     16,712 K
+    
+    svchost.exe                   4008 Services                   0     19,272 K
+    
+    svchost.exe                   4068 Services                   0     11,372 K
+    
+    svchost.exe                   4260 Services                   0     13,960 K
+    
+    sihost.exe                    4380 Console                    1     48,036 K
+    
+    svchost.exe                   4420 Console                    1     23,032 K
+    
+    svchost.exe                   4456 Console                    1     10,748 K
+    
+    svchost.exe                   4512 Console                    1     39,372 K
+    
+    taskhostw.exe                 4564 Console                    1     16,440 K
+    
+    svchost.exe                   4576 Services                   0     26,908 K
+    
+    MicrosoftEdgeUpdate.exe       4676 Services                   0      2,808 K
+    
+    svchost.exe                   4784 Services                   0     21,528 K
+    
+    ChsIME.exe                    4908 Console                    1     10,932 K
+    
+    explorer.exe                  5032 Console                    1    155,812 K
+    
+    ShellHost.exe                 5064 Console                    1     42,220 K
+    
+    svchost.exe                   4984 Console                    1     21,672 K
+    
+    svchost.exe                   5156 Services                   0     13,632 K
+    
+    svchost.exe                   5332 Services                   0     12,112 K
+    
+    SearchHost.exe                5472 Console                    1    110,176 K
+    
+    StartMenuExperienceHost.e     5484 Console                    1    127,656 K
+    
+    RuntimeBroker.exe             5748 Console                    1     45,388 K
+    
+    svchost.exe                   5780 Console                    1     28,448 K
+    
+    Widgets.exe                   5976 Console                    1     53,412 K
+    
+    msedgewebview2.exe            6140 Console                    1    115,328 K
+    
+    msedgewebview2.exe            6032 Console                    1      9,244 K
+    
+    taskhostw.exe                 6188 Console                    1      8,204 K
+    
+    msedgewebview2.exe            7132 Console                    1     45,740 K
+    
+    msedgewebview2.exe            7152 Console                    1     33,416 K
+    
+    msedgewebview2.exe            6564 Console                    1     20,260 K
+    
+    svchost.exe                   4084 Services                   0     18,912 K
+    
+    msedgewebview2.exe            6676 Console                    1     99,708 K
+    
+    NisSrv.exe                    7544 Services                   0     25,240 K
+    
+    ctfmon.exe                    7596 Console                    1     44,728 K
+    
+    ChsIME.exe                    7716 Console                    1     10,972 K
+    
+    WmiPrvSE.exe                  7920 Services                   0     30,292 K
+    
+    TextInputHost.exe             8108 Console                    1     79,740 K
+    
+    smartscreen.exe               7372 Console                    1     13,052 K
+    
+    SecurityHealthSystray.exe     7404 Console                    1     13,332 K
+    
+    SecurityHealthService.exe     7432 Services                   0     22,172 K
+    
+    vmtoolsd.exe                  7904 Console                    1     22,332 K
+    
+    OneDrive.exe                  3276 Console                    1    116,524 K
+    
+    svchost.exe                   5656 Services                   0     12,624 K
+    
+    svchost.exe                   5012 Services                   0      8,732 K
+    
+    svchost.exe                   7936 Services                   0     13,832 K
+    
+    svchost.exe                   1892 Services                   0     13,172 K
+    
+    svchost.exe                   2780 Services                   0     22,616 K
+    
+    svchost.exe                   1188 Services                   0     13,664 K
+    
+    svchost.exe                   4796 Console                    1     15,748 K
+    
+    WmiApSrv.exe                  5288 Services                   0     11,620 K
+    
+    conhost.exe                   4656 Services                   0      9,256 K
+    
+    drvlite-target.exe            1064 Services                   0      3,980 K
+    
+    msedgewebview2.exe            7280 Console                    1      5,276 K
+    
+    msedgewebview2.exe            8020 Console                    1      9,524 K
+    
+    msedgewebview2.exe             696 Console                    1        652 K
+    
+    msedgewebview2.exe            4756 Console                    1      1,884 K
+    
+    msedgewebview2.exe             908 Console                    1         ��ȱ
+    
+    msedgewebview2.exe            1260 Console                    1      2,128 K
+    
+    svchost.exe                   7200 Services                   0     16,364 K
+    
+    taskhostw.exe                 4972 Services                   0     22,100 K
+    
+    svchost.exe                   7948 Services                   0      9,112 K
+    
+    ngentask.exe                  5888 Services                   0     20,152 K
+    
+    conhost.exe                   3616 Services                   0     11,504 K
+    
+    ngentask.exe                  5188 Services                   0     18,180 K
+    
+    conhost.exe                   4196 Services                   0     11,452 K
+    
+    ngen.exe                      5216 Services                   0     15,052 K
+    
+    ngen.exe                      7724 Services                   0      9,992 K
+    
+    mscorsvw.exe                  2684 Services                   0    129,704 K
+    
+    cmd.exe                       2608 Services                   0      8,196 K
+    
+    conhost.exe                   3992 Services                   0     10,684 K
+    
+    cmd.exe                       2560 Services                   0      4,576 K
+    
+    tasklist.exe                  5388 Services                   0     11,480 K
+  guest> C:\drvlite\run-cli.cmd handle --pid 3068 --full --kill
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    handle   : 0xb8
+    
+    granted  : 0x1fffff
+    
+    terminate: no (error 5)
+[PASS] handle_protected_process PPL process 3068: GrantedAccess raised to 0x1fffff; terminate blocked by PPL policy (expected on hardened AV)
+  guest> C:\drvlite\run-cli.cmd hook-shutdown-test
+    exit_code    : 1
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    hook_install: unsupported (16)
+[SKIP] shutdown_with_hooks_armed skip: InfinityHook unsupported on this guest build (platform gate)

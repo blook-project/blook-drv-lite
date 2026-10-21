@@ -1,0 +1,38 @@
+exit_code    : 0
+
+
+SERVICE_NAME: Drvlite 
+
+        TYPE               : 1  KERNEL_DRIVER  
+
+        STATE              : 4  RUNNING 
+
+                                (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+
+        WIN32_EXIT_CODE    : 0  (0x0)
+
+        SERVICE_EXIT_CODE  : 0  (0x0)
+
+        CHECKPOINT         : 0x0
+
+        WAIT_HINT          : 0x0
+
+        PID                : 0
+
+        FLAGS              : 
+
+mapper: C:\drvlite\start-drv.cmd
+
+phys-read-4k             median=   73.20 us  p99=62316.60 us      53.4 MiB/s  failures=0
+
+kernel-read-4k           median=   71.00 us  p99=61632.80 us      55.0 MiB/s  failures=0
+
+process-read-4k          median=   75.40 us  p99=62069.70 us      51.8 MiB/s  failures=0
+
+process-write-4k         median=   75.40 us  p99=62300.30 us      51.8 MiB/s  failures=0
+
+phys-write-4k            median=   81.50 us  p99=62021.90 us      47.9 MiB/s  failures=0
+
+syscall-overhead        unsupported on this build
+
+bench: 200 iterations, 0 failures
