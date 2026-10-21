@@ -107,19 +107,27 @@ class session {
 
     bool active() const { return active_; }
 
-    /* Raw application-protocol call. */
+    /** Raw application-protocol call (see docs/protocol.md). */
     int call(uint16_t opcode, const void* input, uint32_t input_length,
              void* output, uint32_t output_capacity, uint32_t* output_length,
              uint32_t timeout_ms = 5000);
 
-    /* Session / introspection. */
+    /** Session/introspection. */
+    /** Build, ABI, feature bitmap, driver/kernel bases, diagnostic page. */
     int query_info(device_info* out) const;
+    /** Validated CR3/PEB/image base of a process. */
     int process_info(uint32_t pid, process_details* out) const;
+    /** Kernel (pid 0) or process module list; paginates internally. */
     int modules(uint32_t pid, std::vector<drvlite_module_info>* out) const;
+    /** Tolerant module dump; unmapped holes are zero-filled. */
     int module_dump(uint32_t pid, uint64_t address, uint32_t size,
                     std::vector<uint8_t>* data, uint32_t* bytes_read) const;
 
-    /* Memory. */
+    /**
+     * Memory access. `size` is capped by DRVLITE_MAX_TRANSFER (0xFC00) per
+     * call. Physical writes use a non-cached mapping; process access uses the
+     * validated CR3 walk and never attaches to the target.
+     */
     int read_physical(uint64_t address, void* buffer, uint32_t size) const;
     int write_physical(uint64_t address, const void* buffer, uint32_t size);
     int read_kernel(uint64_t address, void* buffer, uint32_t size) const;
@@ -128,23 +136,33 @@ class session {
                      uint32_t size) const;
     int write_process(uint32_t pid, uint64_t address, const void* buffer,
                       uint32_t size);
+    /** Reads up to DRVLITE_MAX_BATCH_RANGES ranges; per-range status. */
     int batch_read_process(uint32_t pid, const drvlite_range* ranges,
                            uint32_t count, std::vector<uint8_t>* data,
                            std::vector<uint32_t>* statuses) const;
 
-    /* DSE. */
+    /** DSE: query, patch (values typically 0 = disabled) and restore. */
     int dse_query(dse_status* out) const;
     int dse_set(uint32_t value);
     int dse_restore();
 
-    /* Handles: open a handle in the client process with full access. */
+    /**
+     * Handle bypass: opens a handle in the client process with a minimal
+     * access request, rewrites the handle-table GrantedAccess to `access`
+     * (DRVLITE_ACCESS_FULL = 0x1FFFFF) and returns it. The caller owns the
+     * handle; close_handle or CloseHandle releases it.
+     */
     int open_process_handle(uint32_t pid, uint32_t access, HANDLE* out,
                             uint32_t* granted);
     int open_thread_handle(uint32_t pid, uint32_t tid, uint32_t access,
                            HANDLE* out, uint32_t* granted);
     int close_handle(HANDLE handle, uint32_t pid);
 
-    /* InfinityHook. */
+    /**
+     * InfinityHook: install the syscall entry trampoline, read counters,
+     * remove it, cloak debug registers for `pid` and/or deny configured
+     * syscalls. Unsupported builds return DRVLITE_ERR_UNSUPPORTED.
+     */
     int infinity_status(hook_status* out) const;
     int infinity_install(const std::vector<uint32_t>& ssn_filter = {});
     int infinity_remove();
@@ -152,15 +170,10 @@ class session {
     int set_syscall_shield(bool enable, uint32_t pid,
                            const std::vector<uint32_t>& ssns);
 
-    /* Restores every patch and stops the driver worker. */
+    /** Restores every kernel patch and stops the driver worker. */
     int shutdown();
 
    private:
-    int call_with_reply(uint16_t opcode, const void* input,
-                        uint32_t input_length, void* output,
-                        uint32_t output_capacity, uint32_t min_reply_size,
-                        uint32_t* output_length,
-                        uint32_t timeout_ms = 5000) const;
     int device_call(uint16_t opcode, const void* input, uint32_t input_length,
                     void* output, uint32_t output_capacity,
                     uint32_t* output_length, uint32_t min_reply_size) const;

@@ -362,9 +362,9 @@ kc_status module_list(const void* input, u32 input_length, void* output,
     response->pid = request->pid;
     u32 total = 0;
     if (request->pid == 0) {
-        total = kernel_modules(
-            reinterpret_cast<module_entry*>(response->modules), capacity,
-            request->flags);
+        total =
+            kernel_modules(reinterpret_cast<module_entry*>(response->modules),
+                           capacity, request->flags);
     } else {
         process_ref process;
         if (!process_open(request->pid, &process)) {
