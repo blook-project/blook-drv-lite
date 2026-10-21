@@ -186,6 +186,12 @@ typedef struct drvlite_query_info_rsp {
     uint64_t client_eprocess;
     uint32_t client_pid;
     uint32_t reserved;
+    /* Diagnostic page owned by the driver: lets the e2e suite prove direct
+     * physical read/write without guessing a physical address. */
+    uint64_t test_page_va;
+    uint64_t test_page_pa;
+    uint32_t reserved2;
+    uint32_t reserved3;
 } drvlite_query_info_rsp;
 
 /* ------------------------------------------------------------------ */

@@ -103,6 +103,8 @@ kc_status query_info(const void* input, u32 input_length, void* output,
     response->kernel_size = global.kernel_size;
     response->client_eprocess = as_u64(global.client_process);
     response->client_pid = global.client_pid;
+    response->test_page_va = as_u64(global.test_page);
+    response->test_page_pa = global.test_page_pa;
     return finish(output, output_length, DRVLITE_OP_QUERY_INFO, need,
                   DRVLITE_OK);
 }
@@ -154,7 +156,7 @@ kc_status mem_write(bool kernel, const void* input, u32 input_length,
     }
     const u8* data =
         reinterpret_cast<const u8*>(request) + sizeof(drvlite_mem_req);
-    const u32 need = sizeof(drvlite_mem_rsp) - 1; /* header only, no data */
+    const u32 need = static_cast<u32>(offsetof(drvlite_mem_rsp, data));
     if (!capacity_ok(*output_capacity, need)) {
         return fail(output_length, DRVLITE_ERR_PARAM);
     }
@@ -165,7 +167,6 @@ kc_status mem_write(bool kernel, const void* input, u32 input_length,
     } else {
         u64 end = 0;
         ok = core::checked_add(request->address, request->size, &end) &&
-             (request->address & kPageMask) == 0 &&
              phys_write(request->address, data, request->size);
     }
     if (!ok) {
@@ -236,7 +237,7 @@ kc_status process_mem(bool write, const void* input, u32 input_length,
     if (status != KC_OK) {
         return fail(output_length, status);
     }
-    const u32 need = sizeof(drvlite_process_mem_rsp) - 1;
+    const u32 need = static_cast<u32>(offsetof(drvlite_process_mem_rsp, data));
     if (!capacity_ok(*output_capacity, need)) {
         return fail(output_length, DRVLITE_ERR_PARAM);
     }

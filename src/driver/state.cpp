@@ -52,6 +52,15 @@ NTSTATUS state_initialize(const kc_bootstrap* bootstrap) {
         client != nullptr) {
         global.client_process = client;
     }
+    /* Diagnostic page for the physical read/write e2e cases. */
+    void* test_page = ExAllocatePool2(POOL_FLAG_NON_PAGED, 0x1000, 'pdlD');
+    if (test_page != nullptr) {
+        RtlFillMemory(test_page, 0x1000, 0xCC);
+        RtlCopyMemory(test_page, "DRVLITE-PHYS", 12);
+        global.test_page = test_page;
+        const PHYSICAL_ADDRESS physical = MmGetPhysicalAddress(test_page);
+        global.test_page_pa = static_cast<u64>(physical.QuadPart) & ~0xFFFULL;
+    }
     return STATUS_SUCCESS;
 }
 
@@ -70,6 +79,10 @@ void cleanup_all() {
     if (global.client_process != nullptr) {
         ObDereferenceObject(global.client_process);
         global.client_process = nullptr;
+    }
+    if (global.test_page != nullptr) {
+        ExFreePoolWithTag(global.test_page, 'pdlD');
+        global.test_page = nullptr;
     }
     global.handles_open = 0;
 }

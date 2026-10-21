@@ -206,6 +206,8 @@ int session::query_info(device_info* out) const {
     out->kernel_size = response->kernel_size;
     out->client_eprocess = response->client_eprocess;
     out->client_pid = response->client_pid;
+    out->test_page_va = response->test_page_va;
+    out->test_page_pa = response->test_page_pa;
     return DRVLITE_OK;
 }
 

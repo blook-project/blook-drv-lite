@@ -201,3 +201,28 @@ if os.isdir("tests/guest/unsigned") then
         add_ldflags("/ENTRY:DriverEntry", {force = true})
         set_encodings("utf8")
 end
+
+-- Test-only manual mapper (device based, signed with the test signer).
+if os.isdir("tests/guest/mapper") then
+    target("drvlite-mapper")
+        add_rules("wdk.driver", "wdk.env.wdm")
+        set_values("wdk.env.winver", "win10_vb")
+        set_languages("cxx17")
+        set_exceptions("no-cxx")
+        add_defines("NOMINMAX", "POOL_NX_OPTIN=1")
+        add_includedirs({ "tests/guest/mapper" })
+        add_files("tests/guest/mapper/mapper.sys.cpp")
+        add_cxxflags("/kernel", "/W4", "/GR-", "/EHs-c-", "/utf-8", {force = true})
+        add_syslinks("ntoskrnl", "hal", "wdmsec")
+        add_ldflags("/ENTRY:DriverEntry", {force = true})
+        set_encodings("utf8")
+
+    target("drvlite-mapper-cli")
+        set_kind("binary")
+        set_languages("cxx20")
+        add_defines("NOMINMAX", "UNICODE", "_UNICODE")
+        add_includedirs({ "tests/guest/mapper" })
+        add_files("tests/guest/mapper/mapper_cli.cpp")
+        add_cxxflags("/utf-8", "/permissive-", "/W4", {tools = "cl"})
+        set_encodings("utf8")
+end

@@ -15,6 +15,7 @@ struct module_entry {
     u64 base;
     u64 size;
     u32 flags;
+    u32 name_len;
     char name[DRVLITE_MODULE_NAME_MAX];
 };
 

@@ -9,6 +9,12 @@
 namespace drvlite {
 namespace {
 
+static_assert(sizeof(module_entry) == sizeof(drvlite_module_info),
+              "module_entry must overlay drvlite_module_info");
+static_assert(offsetof(module_entry, name) ==
+                  offsetof(drvlite_module_info, name),
+              "module name offset mismatch");
+
 /* KLDR_DATA_TABLE_ENTRY (stable x64 layout, only the read fields). */
 struct kldr_data_table_entry {
     LIST_ENTRY in_load_order_links;   /* 0x00 */
@@ -64,6 +70,12 @@ u32 kernel_modules(module_entry* output, u32 capacity) {
             if (item.name[0] == '\0') {
                 narrow_copy(entry->base_dll_name, item.name, sizeof(item.name));
             }
+            u32 name_length_value = 0;
+            while (name_length_value < sizeof(item.name) - 1 &&
+                   item.name[name_length_value] != '\0') {
+                ++name_length_value;
+            }
+            item.name_len = name_length_value;
             ++count;
         }
     } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -138,12 +150,14 @@ u32 process_modules(PEPROCESS process, u64 cr3, module_entry* output,
         const u64 entry = link - kLdrEntryInLoadOrderLinks;
         module_entry& item = output[count];
         u64 dll_base = 0;
-        u32 size_of_image = 0;
+        u64 size_of_image_read = 0;
         if (!core::read_u64(reader, cr3, entry + kLdrEntryDllBase, &dll_base) ||
             !core::read_u64(reader, cr3, entry + kLdrEntrySizeOfImage,
-                            reinterpret_cast<u64*>(&size_of_image))) {
+                            &size_of_image_read)) {
             break;
         }
+        const u32 size_of_image =
+            static_cast<u32>(size_of_image_read & 0xFFFFFFFFULL);
         /* Read the base name (UNICODE_STRING: length/max/buffer). */
         u16 name_length = 0;
         if (!core::read_virtual(reader, cr3, entry + kLdrEntryBaseDllName,
@@ -173,6 +187,12 @@ u32 process_modules(PEPROCESS process, u64 cr3, module_entry* output,
                 narrow_copy(name, item.name, sizeof(item.name));
             }
         }
+        u32 name_length_value = 0;
+        while (name_length_value < sizeof(item.name) - 1 &&
+               item.name[name_length_value] != '\0') {
+            ++name_length_value;
+        }
+        item.name_len = name_length_value;
         ++count;
         u64 next = 0;
         if (!core::read_u64(reader, cr3, link, &next)) {

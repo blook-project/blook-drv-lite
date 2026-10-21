@@ -47,6 +47,8 @@ struct device_info {
     uint32_t kernel_size = 0;
     uint64_t client_eprocess = 0;
     uint32_t client_pid = 0;
+    uint64_t test_page_va = 0;
+    uint64_t test_page_pa = 0;
 };
 
 struct process_details {

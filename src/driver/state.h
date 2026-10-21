@@ -67,6 +67,10 @@ struct driver_state {
     u32 handles_open = 0;
     bool shutting_down = false;
     bool cleanup_done = false;
+    /* Diagnostic page: first bytes are a magic, its physical address is
+     * reported to the SDK so e2e can exercise the physical read/write path. */
+    void* test_page = nullptr;
+    u64 test_page_pa = 0;
     dse_state dse;
     infinity_state infinity;
     /*

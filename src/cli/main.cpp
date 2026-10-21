@@ -450,6 +450,222 @@ int run_command(drvlite::session& session, int argc, char** argv,
         std::printf("error       : 0x%x\n", status.flags);
         return status.installed ? 0 : 0;
     }
+    if (command == "phys") {
+        drvlite::device_info info;
+        const int info_status = session.query_info(&info);
+        if (info_status != DRVLITE_OK || info.test_page_pa == 0) {
+            print_status("phys", info_status != DRVLITE_OK
+                                     ? info_status
+                                     : DRVLITE_ERR_NOT_FOUND);
+            return 1;
+        }
+        uint8_t header[16] = {};
+        int status =
+            session.read_physical(info.test_page_pa, header, sizeof(header));
+        if (status != DRVLITE_OK ||
+            std::memcmp(header, "DRVLITE-PHYS", 12) != 0) {
+            print_status("phys_read", status);
+            return 1;
+        }
+        std::printf("diagnostic page: va=%s pa=%s magic=%.12s\n",
+                    hex_u64(info.test_page_va).c_str(),
+                    hex_u64(info.test_page_pa).c_str(),
+                    reinterpret_cast<const char*>(header));
+        const uint64_t probe_pa = info.test_page_pa + 0x400;
+        uint32_t original = 0;
+        status = session.read_physical(probe_pa, &original, sizeof(original));
+        if (status != DRVLITE_OK) {
+            print_status("phys_read_probe", status);
+            return 1;
+        }
+        const uint32_t canary = 0xDEADBEEFu;
+        status = session.write_physical(probe_pa, &canary, sizeof(canary));
+        if (status != DRVLITE_OK) {
+            print_status("phys_write", status);
+            return 1;
+        }
+        uint32_t observed = 0;
+        status = session.read_physical(probe_pa, &observed, sizeof(observed));
+        if (status != DRVLITE_OK || observed != canary) {
+            print_status("phys_verify",
+                         status != DRVLITE_OK ? status : DRVLITE_ERR_VERIFY);
+            return 1;
+        }
+        session.write_physical(probe_pa, &original, sizeof(original));
+        std::printf(
+            "physical read/write roundtrip: ok (0x%x -> 0x%x -> 0x%x)\n",
+            original, canary, observed);
+        return 0;
+    }
+    if (command == "ssn") {
+        if (argc != 2) {
+            return usage();
+        }
+        const uint32_t ssn = drvlite::ntdll_syscall_number(argv[1]);
+        if (ssn == 0) {
+            std::printf("syscall %s not found\n", argv[1]);
+            return 1;
+        }
+        std::printf("%s ssn=%u\n", argv[1], ssn);
+        return 0;
+    }
+    if (command == "thread-dr") {
+        if (argc != 3) {
+            return usage();
+        }
+        uint32_t pid = 0;
+        uint32_t tid = 0;
+        if (!parse_u32(argv[1], &pid) || !parse_u32(argv[2], &tid)) {
+            return 1;
+        }
+        HANDLE thread = nullptr;
+        uint32_t granted = 0;
+        const int status = session.open_thread_handle(
+            pid, tid, DRVLITE_ACCESS_FULL, &thread, &granted);
+        if (status != DRVLITE_OK) {
+            print_status("open_thread", status);
+            return 1;
+        }
+        CONTEXT context{};
+        context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        if (!GetThreadContext(thread, &context)) {
+            std::printf("GetThreadContext failed: %lu\n", GetLastError());
+            session.close_handle(thread, pid);
+            return 1;
+        }
+        std::printf(
+            "granted=0x%x dr0=0x%llx dr1=0x%llx dr2=0x%llx "
+            "dr3=0x%llx dr6=0x%llx dr7=0x%llx\n",
+            granted, static_cast<unsigned long long>(context.Dr0),
+            static_cast<unsigned long long>(context.Dr1),
+            static_cast<unsigned long long>(context.Dr2),
+            static_cast<unsigned long long>(context.Dr3),
+            static_cast<unsigned long long>(context.Dr6),
+            static_cast<unsigned long long>(context.Dr7));
+        session.close_handle(thread, pid);
+        return 0;
+    }
+    if (command == "stress") {
+        if (argc != 4) {
+            return usage();
+        }
+        uint32_t pid = 0;
+        uint64_t address = 0;
+        uint32_t iterations = 0;
+        if (!parse_u32(argv[1], &pid) || !parse_u64(argv[2], &address) ||
+            !parse_u32(argv[3], &iterations)) {
+            return 1;
+        }
+        uint32_t failures = 0;
+        drvlite::device_info info;
+        session.query_info(&info);
+        for (uint32_t index = 0; index < iterations; ++index) {
+            uint32_t value = index;
+            if (session.write_process(pid, address, &value, sizeof(value)) !=
+                DRVLITE_OK) {
+                ++failures;
+                continue;
+            }
+            uint32_t observed = 0;
+            if (session.read_process(pid, address, &observed,
+                                     sizeof(observed)) != DRVLITE_OK ||
+                observed != value) {
+                ++failures;
+            }
+            uint8_t header[4] = {};
+            if (info.kernel_base != 0 &&
+                session.read_kernel(info.kernel_base, header, sizeof(header)) !=
+                    DRVLITE_OK) {
+                ++failures;
+            }
+            if (info.test_page_pa != 0) {
+                uint32_t canary = 0;
+                if (session.read_physical(info.test_page_pa, &canary,
+                                          sizeof(canary)) != DRVLITE_OK) {
+                    ++failures;
+                }
+            }
+        }
+        std::printf("stress: %u iterations, %u failures\n", iterations,
+                    failures);
+        return failures == 0 ? 0 : 1;
+    }
+    if (command == "hook-test") {
+        std::vector<uint32_t> filter;
+        for (int index = 1; index < argc; ++index) {
+            uint32_t ssn = 0;
+            if (parse_u32(argv[index], &ssn)) {
+                filter.push_back(ssn);
+            }
+        }
+        const int install_status = session.infinity_install(filter);
+        if (install_status != DRVLITE_OK) {
+            print_status("hook_install", install_status);
+            return 1;
+        }
+        drvlite::hook_status before;
+        session.infinity_status(&before);
+        for (int iteration = 0; iteration < 2000; ++iteration) {
+            HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
+                                         FALSE, GetCurrentProcessId());
+            if (process != nullptr) {
+                DWORD exit_code = 0;
+                GetExitCodeProcess(process, &exit_code);
+                CloseHandle(process);
+            }
+        }
+        drvlite::hook_status after;
+        session.infinity_status(&after);
+        const int remove_status = session.infinity_remove();
+        std::printf(
+            "syscalls before=%llu after=%llu filter_hits=%llu "
+            "installed=%d removed=%d\n",
+            static_cast<unsigned long long>(before.total_syscalls),
+            static_cast<unsigned long long>(after.total_syscalls),
+            static_cast<unsigned long long>(after.filtered_hits),
+            after.installed ? 1 : 0, remove_status);
+        if (after.total_syscalls <= before.total_syscalls) {
+            std::printf("hook-test: no syscalls observed\n");
+            return 1;
+        }
+        return remove_status == DRVLITE_OK ? 0 : 1;
+    }
+    if (command == "hwbp-test") {
+        if (argc != 3) {
+            return usage();
+        }
+        uint32_t pid = 0;
+        uint32_t tid = 0;
+        if (!parse_u32(argv[1], &pid) || !parse_u32(argv[2], &tid)) {
+            return 1;
+        }
+        auto print_context = [&](const char* label) -> bool {
+            HANDLE thread = nullptr;
+            uint32_t granted = 0;
+            if (session.open_thread_handle(pid, tid, DRVLITE_ACCESS_FULL,
+                                           &thread, &granted) != DRVLITE_OK) {
+                std::printf("%s: open_thread failed\n", label);
+                return false;
+            }
+            CONTEXT context{};
+            context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+            const BOOL ok = GetThreadContext(thread, &context);
+            std::printf("%s: dr0=0x%llx dr7=0x%llx ok=%d\n", label,
+                        static_cast<unsigned long long>(context.Dr0),
+                        static_cast<unsigned long long>(context.Dr7), ok);
+            session.close_handle(thread, pid);
+            return ok != 0;
+        };
+        const bool before = print_context("before");
+        const int hide_status = session.hide_debug_registers(true, pid);
+        const bool hidden = print_context("hidden");
+        session.hide_debug_registers(false, pid);
+        const bool restored = print_context("restored");
+        std::printf("hwbp-test: hide=%d before=%d hidden=%d restored=%d\n",
+                    hide_status, before, hidden, restored);
+        return hide_status == DRVLITE_OK && before && hidden && restored ? 0
+                                                                         : 1;
+    }
     if (command == "shutdown") {
         const int status = session.shutdown();
         print_status("shutdown", status);
