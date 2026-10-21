@@ -335,6 +335,19 @@ std::vector<uint8_t> parse_hex(const char* text) {
     return bytes;
 }
 
+/* Accepts the byte list either as one argument ("43 52 33") or as several
+ * shell-split tokens ("43" "52" "33"), which is how batch files pass it. */
+std::vector<uint8_t> parse_hex_args(int argc, char** argv, int start) {
+    std::string joined;
+    for (int index = start; index < argc; ++index) {
+        if (!joined.empty()) {
+            joined.push_back(' ');
+        }
+        joined += argv[index];
+    }
+    return parse_hex(joined.c_str());
+}
+
 void dump_bytes(const uint8_t* data, uint32_t size) {
     for (uint32_t index = 0; index < size; ++index) {
         if (index % 16 == 0) {
@@ -413,7 +426,7 @@ int run_command(drvlite::session& session, int argc, char** argv,
         return 0;
     }
     if (command == "write-phys" || command == "write-kernel") {
-        if (argc != 3) {
+        if (argc < 3) {
             return usage();
         }
         uint64_t address = 0;
@@ -421,7 +434,7 @@ int run_command(drvlite::session& session, int argc, char** argv,
             std::printf("invalid address\n");
             return 1;
         }
-        const std::vector<uint8_t> bytes = parse_hex(argv[2]);
+        const std::vector<uint8_t> bytes = parse_hex_args(argc, argv, 2);
         if (bytes.empty()) {
             std::printf("invalid or empty byte list\n");
             return 1;
@@ -457,7 +470,7 @@ int run_command(drvlite::session& session, int argc, char** argv,
         return status == DRVLITE_OK ? 0 : 1;
     }
     if (command == "write-proc") {
-        if (argc != 4) {
+        if (argc < 4) {
             return usage();
         }
         uint32_t pid = 0;
@@ -466,7 +479,7 @@ int run_command(drvlite::session& session, int argc, char** argv,
             std::printf("invalid arguments\n");
             return 1;
         }
-        const std::vector<uint8_t> bytes = parse_hex(argv[3]);
+        const std::vector<uint8_t> bytes = parse_hex_args(argc, argv, 3);
         if (bytes.empty()) {
             std::printf("invalid or empty byte list\n");
             return 1;
@@ -1304,6 +1317,33 @@ int run_command(drvlite::session& session, int argc, char** argv,
             read_status == DRVLITE_OK && write_status == DRVLITE_OK &&
             reread_status == DRVLITE_OK && observed == canary &&
             large_status == DRVLITE_OK && handle_status == DRVLITE_OK;
+        return ok ? 0 : 1;
+    }
+    if (command == "dse-cycle") {
+        drvlite::dse_status before;
+        drvlite::dse_status after_patch;
+        drvlite::dse_status after_restore;
+        if (session.dse_query(&before) != DRVLITE_OK) {
+            return 1;
+        }
+        if (!before.supported) {
+            std::printf("dse-cycle: supported=0\n");
+            return 2;
+        }
+        const int disable = session.dse_set(0);
+        session.dse_query(&after_patch);
+        const int restore = session.dse_restore();
+        session.dse_query(&after_restore);
+        std::printf(
+            "dse-cycle: supported=1 before=0x%x disable=%d patched=%d "
+            "after=0x%x restore=%d restored=%d cur=0x%x\n",
+            before.current, disable, after_patch.patched ? 1 : 0,
+            after_patch.current, restore, after_restore.patched ? 1 : 0,
+            after_restore.current);
+        const bool ok = disable == DRVLITE_OK && after_patch.patched &&
+                        after_patch.current == 0 && restore == DRVLITE_OK &&
+                        !after_restore.patched &&
+                        after_restore.current == before.current;
         return ok ? 0 : 1;
     }
     if (command == "shutdown") {

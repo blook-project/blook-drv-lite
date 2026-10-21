@@ -104,15 +104,21 @@ function Guest([string]$Command, [switch]$Elevated, [int]$TimeoutSec = $StepTime
     return $result.Output
 }
 
-# Runs a guest command and tolerates a non-zero exit code. The new bvmenv
-# surfaces failures with an error string, so do not hide them silently.
+# Runs a guest command and tolerates a non-zero exit code while still
+# returning the captured stdout/stderr so cases can inspect driver statuses.
 function Try-Guest([string]$Command, [switch]$Elevated, [int]$TimeoutSec = $StepTimeoutSec) {
-    try {
-        return Guest $Command -Elevated:$Elevated -TimeoutSec:$TimeoutSec
-    } catch {
-        Log "  (tolerated failure: $($_.Exception.Message))"
-        return ""
+    $arguments = @("exec", $Vm, "--timeout", "$TimeoutSec")
+    if ($Elevated) { $arguments += "--elevated" }
+    $arguments += @("--", "cmd", "/c", $Command)
+    $result = Invoke-Bv $arguments ($TimeoutSec + 30)
+    Log "  guest> $Command"
+    if ($result.Output) {
+        Log ($result.Output -split "`n" | ForEach-Object { "    $_" } | Out-String).TrimEnd()
     }
+    if ($result.TimedOut) {
+        Log "  (tolerated guest timeout: $Command)"
+    }
+    return $result.Output
 }
 
 function Push([string]$Local, [string]$Guest) {
@@ -394,16 +400,16 @@ Run-Case "dse_disable_load_unsigned" {
     Try-Guest "sc delete DrvliteUnsigned" -Elevated | Out-Null
     if ($baseline -eq "loaded") {
         # Test-signing guests allow unsigned images regardless of DSE, so the
-        # load assertion proves nothing here. Verify the patch/restore values.
-        $dse = Run-Cli "dse"
-        if ($dse -notmatch "supported : yes") { throw "DSE resolver unsupported: $dse" }
-        Run-Cli "dse --disable" | Out-Null
-        $disabled = Run-Cli "dse"
-        if ($disabled -notmatch "patched   : yes") { throw "DSE patch not applied: $disabled" }
-        Run-Cli "dse --restore" | Out-Null
-        $restored = Run-Cli "dse"
-        if ($restored -match "patched   : yes") { throw "DSE restore failed: $restored" }
-        return "test-signing guest allows unsigned load; DSE patch/restore verified by value"
+        # load assertion proves nothing here. Verify the patch/restore values
+        # in one CLI session (dse-cycle) so the driver instance does not
+        # restart between the steps.
+        $out = Run-Cli "dse-cycle"
+        if ($out -notmatch "dse-cycle: supported=1") { throw "DSE cycle failed: $out" }
+        if ($out -notmatch "patched=1") { throw "DSE patch not applied: $out" }
+        if ($out -notmatch "restore=0" -or $out -notmatch "restored=0") {
+            throw "DSE restore failed: $out"
+        }
+        return "test-signing guest allows unsigned load; DSE disable/restore verified by value"
     }
     $dse = Run-Cli "dse"
     if ($dse -notmatch "supported : yes") { throw "DSE resolver unsupported: $dse" }
@@ -439,8 +445,11 @@ Run-Case "infinityhook_counters" {
 
 Run-Case "hwbp_detection_bypass" {
     $out = Try-Guest "$GuestDir\run-cli.cmd hwbp-test $targetPid $targetTid" -Elevated
-    if ($out -match "hidden: dr0=0x0") {
+    if ($out -match "hidden: dr0=0x0" -and $out -match "before: dr0=0x[1-9a-f]") {
         return (($out -split "`n" | Where-Object { $_ -match "before:|hidden:|restored:" }) -join "; ")
+    }
+    if ($out -match "before: dr0=0x0") {
+        return "skip: the guest does not expose debug registers through GetThreadContext, so hiding cannot be observed"
     }
     if ($out -match "open_thread failed|hide=0|hide=16") {
         return "skip: debug-register hiding requires the InfinityHook/NtGetContextThread hook (platform gate)"
