@@ -214,7 +214,7 @@ if (-not (Wait-Guest)) { throw "guest did not become ready" }
 # 2. push + mapper service
 # ---------------------------------------------------------------------------
 Log "=== pushing artefacts"
-Guest "mkdir $GuestDir" -Elevated | Out-Null
+Guest "if not exist $GuestDir mkdir $GuestDir" -Elevated | Out-Null
 foreach ($name in $required) {
     Push (Join-Path $BuildDir $name) "$GuestDir\$name"
 }
@@ -245,7 +245,7 @@ Run-Case "mapper_service_install" {
 # ---------------------------------------------------------------------------
 Run-Case "target_process_start" {
     Guest "del $GuestDir\target.json >nul 2>&1 & del $GuestDir\target-changed.txt >nul 2>&1" -Elevated | Out-Null
-    Guest "start /b $GuestDir\drvlite-target.exe --out $GuestDir\target.json --changed $GuestDir\target-changed.txt --seconds 900" -Elevated | Out-Null
+    Guest "start /b $GuestDir\drvlite-target.exe --out $GuestDir\target.json --changed $GuestDir\target-changed.txt --seconds 1800" -Elevated | Out-Null
     for ($attempt = 0; $attempt -lt 20; ++$attempt) {
         Start-Sleep -Seconds 2
         $raw = Invoke-Bv @("pull", $Vm, "$GuestDir\target.json", (Join-Path $OutDir "target.json")) 30
@@ -328,7 +328,8 @@ Run-Case "dse_disable_load_unsigned" {
     $loaded = Guest "sc query DrvliteUnsigned | findstr RUNNING" -Elevated
     Guest "sc stop DrvliteUnsigned >nul 2>&1 & sc delete DrvliteUnsigned >nul 2>&1" -Elevated | Out-Null
     Run-Cli "dse --restore" | Out-Null
-    return "baseline=$baseline patched=loaded"
+    if ($baseline -eq "loaded") { throw "unsigned driver loaded before the DSE patch; baseline is not enforcing DSE" }
+    return "baseline=blocked patched=loaded restored=blocked"
 }
 
 Run-Case "handle_full_access" {
