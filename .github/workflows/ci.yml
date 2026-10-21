@@ -102,35 +102,46 @@ jobs:
           path: artifacts/*
           if-no-files-found: error
 
-      - name: Upload kernel smoke binaries
+      - name: Upload host e2e binaries
         uses: actions/upload-artifact@v4
         with:
           name: blook-drv-lite-smoke-${{ github.sha }}
           path: |
             build/windows/x64/release/drvlite.sys
             build/windows/x64/release/drvlite-cli.exe
+            build/windows/x64/release/drvlite-target.exe
+            build/windows/x64/release/drvlite-unsigned.sys
           if-no-files-found: error
 
-  # Real kernel execution: sign the driver with the repository SPC signer (no
-  # test-signing mode), load it with sc.exe on windows-latest, drive it through
-  # drvlite-cli (info + kernel read) and assert the service reaches RUNNING.
-  kernel-load-smoke:
+  # Full feature e2e matrix on the disposable GitHub runner (admin, testsigning
+  # enabled, no Secure Boot). Same cases as the bvmenv VM matrix: real SPC
+  # signing, physical/kernel/process memory, DSE, handles, InfinityHook (with
+  # documented platform skips), fuzzing, unload trace scan and 1000x loadcycle.
+  host-e2e:
     needs: build-test
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download kernel smoke binaries
+      - name: Download host e2e binaries
         uses: actions/download-artifact@v4
         with:
           name: blook-drv-lite-smoke-${{ github.sha }}
           path: build/windows/x64/release
 
-      - name: Sign, load and exercise the kernel driver
+      - name: Run the full e2e matrix on the runner
         shell: pwsh
         env:
+          DRVLITE_CI_HOST_E2E: "1"
           SPC_PFX_BASE64: ${{ secrets.SPC_PFX_BASE64 }}
           SPC_PFX_PASSWORD: ${{ secrets.SPC_PFX_PASSWORD }}
-          GH_TOKEN: ${{ github.token }}
-        run: ./scripts/ci-kernel-smoke.ps1
+        run: ./scripts/host-e2e.ps1
+
+      - name: Upload e2e evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blook-drv-lite-host-e2e-${{ github.sha }}
+          path: docs/evidence/ci-*
+          if-no-files-found: warn
