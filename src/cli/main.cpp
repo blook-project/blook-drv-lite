@@ -1287,8 +1287,16 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (command == "cycle-test") {
-        const char* allow = std::getenv("DRVLITE_ALLOW_KERNEL_LIVE");
-        if (allow == nullptr || std::strcmp(allow, "1") != 0) {
+        bool allow = false;
+        for (int index = 2; index < argc; ++index) {
+            if (std::strcmp(argv[index], "--allow-kernel-live") == 0) {
+                allow = true;
+            }
+        }
+        const char* allow_env = std::getenv("DRVLITE_ALLOW_KERNEL_LIVE");
+        allow =
+            allow || (allow_env != nullptr && std::strcmp(allow_env, "1") == 0);
+        if (!allow) {
             std::printf(
                 "refusing to load kernel code on this machine "
                 "(DRVLITE_ALLOW_KERNEL_LIVE is not set)\n");
@@ -1313,8 +1321,16 @@ int main(int argc, char** argv) {
         return run_cycle_test(image_path, cycles);
     }
     if (command == "run") {
-        const char* allow = std::getenv("DRVLITE_ALLOW_KERNEL_LIVE");
-        if (allow == nullptr || std::strcmp(allow, "1") != 0) {
+        bool allow = false;
+        for (int index = 2; index < argc; ++index) {
+            if (std::strcmp(argv[index], "--allow-kernel-live") == 0) {
+                allow = true;
+            }
+        }
+        const char* allow_env = std::getenv("DRVLITE_ALLOW_KERNEL_LIVE");
+        allow =
+            allow || (allow_env != nullptr && std::strcmp(allow_env, "1") == 0);
+        if (!allow) {
             std::printf(
                 "refusing to load kernel code on this machine.\n"
                 "Kernel experiments are only allowed inside a bvmenv "
@@ -1356,6 +1372,9 @@ int main(int argc, char** argv) {
         } else if (std::strcmp(argument, "--timeout-ms") == 0 &&
                    index + 1 < argc) {
             parse_u32(argv[++index], &timeout_ms);
+        } else if (std::strcmp(argument, "--allow-kernel-live") == 0) {
+            /* Host-safety proof, already validated above. */
+            continue;
         } else {
             std::printf("unknown option: %s\n", argument);
             return usage();

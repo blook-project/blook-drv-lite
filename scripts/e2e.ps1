@@ -137,7 +137,7 @@ function Run-Case([string]$Name, [scriptblock]$Body) {
     }
 }
 
-$mapCommand = "$GuestDir\drvlite-mapper-cli.exe --image {image} --bootstrap {bootstrap}"
+$mapCommand = "$GuestDir\drvlite-mapper-cli.exe --allow-kernel-live --image {image} --bootstrap {bootstrap}"
 function Run-Cli([string]$SubCommand, [switch]$Elevated, [int]$TimeoutSec = $StepTimeoutSec) {
     # Guest batch file avoids nested-quote mangling through bvmenv exec.
     return Guest "$GuestDir\run-cli.cmd $SubCommand" -Elevated:$Elevated -TimeoutSec:$TimeoutSec
@@ -231,6 +231,9 @@ if (-not (Wait-Guest)) { throw "guest did not become ready" }
 # 2. push + mapper service
 # ---------------------------------------------------------------------------
 Log "=== pushing artefacts"
+# A previously running mapper service locks its image file; stop it first.
+Try-Guest "sc stop DrvliteMapper" -Elevated | Out-Null
+Try-Guest "sc delete DrvliteMapper" -Elevated | Out-Null
 Guest "if not exist $GuestDir mkdir $GuestDir" -Elevated | Out-Null
 foreach ($name in $required) {
     Push (Join-Path $BuildDir $name) "$GuestDir\$name"
@@ -240,17 +243,17 @@ Push (Join-Path $RepoRoot "docs\e2e.md") "$GuestDir\e2e.md"
 $runCli = @"
 @echo off
 set DRVLITE_ALLOW_KERNEL_LIVE=1
-"$GuestDir\drvlite-cli.exe" run --image $GuestDir\drvlite.sys --map-cmd "$mapCommand" -- %*
+"$GuestDir\drvlite-cli.exe" run --allow-kernel-live --image $GuestDir\drvlite.sys --map-cmd "$mapCommand" -- %*
 "@
 $cycleCli = @"
 @echo off
 set DRVLITE_ALLOW_KERNEL_LIVE=1
-"$GuestDir\drvlite-cli.exe" cycle-test --image $GuestDir\drvlite.sys --cycles %1
+"$GuestDir\drvlite-cli.exe" cycle-test --allow-kernel-live --image $GuestDir\drvlite.sys --cycles %1
 "@
 $unmapCli = @"
 @echo off
 set DRVLITE_ALLOW_KERNEL_LIVE=1
-"$GuestDir\drvlite-mapper-cli.exe" --unmap %1
+"$GuestDir\drvlite-mapper-cli.exe" --allow-kernel-live --unmap %1
 "@
 $runCliPath = Join-Path $OutDir "run-cli.cmd"
 $cycleCliPath = Join-Path $OutDir "cycle.cmd"

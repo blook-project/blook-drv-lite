@@ -1,0 +1,30 @@
+blook-drv-lite e2e 2026-10-21T13:02:34.4898597+08:00
+=== signing test mapper
+  signed: D:\blook-kernel-project\blook-drv-lite\build\windows\x64\release\drvlite-mapper.sys
+    signer: CN="BEIJING XINDA HUANYU NETWORK SECURITY TECHNOLOGY CO.,LTD", OU=Digital ID Class 3 - Microsoft Software Validation v2, O="BEIJING XINDA HUANYU NETWORK SECURITY TECHNOLOGY CO.,LTD", L=" Beijing", S=Beijing, C=CN
+    digest: SHA-1, PKCS#7 7168 bytes, countersignature @ 2013-01-01T00:00:00Z
+=== reusing running VM vm-drv-lite (no reset)
+start: already running: vm-drv-lite
+=== pushing artefacts
+  guest> sc stop DrvliteMapper
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: DrvliteMapper 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 1  STOPPED 
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+  guest> sc delete DrvliteMapper
+    exit_code    : 0
+    [SC] DeleteService �ɹ�
+  guest> if not exist C:\drvlite mkdir C:\drvlite
+    exit_code    : 0
