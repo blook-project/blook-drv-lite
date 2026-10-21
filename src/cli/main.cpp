@@ -1412,6 +1412,50 @@ std::string replace_all(std::string text, const std::string& from,
     return text;
 }
 
+/* Load/unload cycle test for the service-load dev path: attach a fresh
+ * kchannel session, publish its bootstrap in the registry, start the service,
+ * handshake, query, shut down and unload - all without spawning a new CLI
+ * process per iteration. */
+int run_service_cycle(const char* service, const char* map_command,
+                      uint32_t cycles) {
+    if (service == nullptr || map_command == nullptr || cycles == 0) {
+        return 2;
+    }
+    std::string stop_command = "sc stop ";
+    stop_command += service;
+    uint32_t failures = 0;
+    for (uint32_t index = 0; index < cycles; ++index) {
+        drvlite::session session;
+        drvlite::attach_options options;
+        options.mode = KC_MODE_COPY;
+        if (session.attach(options) != DRVLITE_OK) {
+            ++failures;
+            continue;
+        }
+        if (!write_registry_bootstrap(service, session.bootstrap())) {
+            ++failures;
+            session.detach();
+            continue;
+        }
+        if (std::system(map_command) != 0) {
+            ++failures;
+            session.detach();
+            continue;
+        }
+        if (session.finish(5000) != DRVLITE_OK) {
+            ++failures;
+        } else {
+            drvlite::device_info info;
+            session.query_info(&info);
+        }
+        session.shutdown();
+        session.detach();
+        std::system(stop_command.c_str());
+    }
+    std::printf("service-cycle: %u cycles, %u failures\n", cycles, failures);
+    return failures == 0 ? 0 : 1;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -1424,6 +1468,42 @@ int main(int argc, char** argv) {
                     drvlite::version_string(), DRVLITE_ABI_MAJOR,
                     DRVLITE_ABI_MINOR);
         return 0;
+    }
+    if (command == "service-cycle") {
+        bool allow = false;
+        const char* service = nullptr;
+        const char* map_command = nullptr;
+        uint32_t cycles = 100;
+        for (int index = 2; index < argc; ++index) {
+            if (std::strcmp(argv[index], "--allow-kernel-live") == 0) {
+                allow = true;
+            } else if (std::strcmp(argv[index], "--service") == 0 &&
+                       index + 1 < argc) {
+                service = argv[++index];
+            } else if (std::strcmp(argv[index], "--map-cmd") == 0 &&
+                       index + 1 < argc) {
+                map_command = argv[++index];
+            } else if (std::strcmp(argv[index], "--cycles") == 0 &&
+                       index + 1 < argc) {
+                parse_u32(argv[++index], &cycles);
+            }
+        }
+        const char* allow_env = std::getenv("DRVLITE_ALLOW_KERNEL_LIVE");
+        allow =
+            allow || (allow_env != nullptr && std::strcmp(allow_env, "1") == 0);
+        if (!allow) {
+            std::printf(
+                "refusing to load kernel code on this machine "
+                "(DRVLITE_ALLOW_KERNEL_LIVE is not set)\n");
+            return 3;
+        }
+        if (service == nullptr || map_command == nullptr || cycles == 0) {
+            std::printf(
+                "usage: drvlite-cli service-cycle --service <name> "
+                "--map-cmd <cmd> [--cycles N]\n");
+            return 2;
+        }
+        return run_service_cycle(service, map_command, cycles);
     }
     if (command == "cycle-test") {
         bool allow = false;

@@ -1033,3 +1033,87 @@ start: already running: vm-drv-lite
     
     hook_install: unsupported (16)
 [SKIP] shutdown_with_hooks_armed skip: InfinityHook unsupported on this guest build (platform gate)
+  guest> C:\drvlite\cycle.cmd 1000
+    exit_code    : -1 (timed out)
+[FAIL] load_unload_1000 guest command failed (1): C:\drvlite\cycle.cmd 1000 :: exit_code    : -1 (timed out)
+  guest> C:\drvlite\run-cli.cmd shutdown
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 4  RUNNING 
+    
+                                    (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+    
+            PID                : 0
+    
+            FLAGS              : 
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    shutdown: ok
+  guest> echo alive
+    exit_code    : 0
+    alive
+[PASS] shutdown_restore driver shut down, guest responsive
+  guest> sc query Drvlite
+    exit_code    : 0
+    
+    
+    SERVICE_NAME: Drvlite 
+    
+            TYPE               : 1  KERNEL_DRIVER  
+    
+            STATE              : 2  START_PENDING 
+    
+                                    (NOT_STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+    
+            WIN32_EXIT_CODE    : 0  (0x0)
+    
+            SERVICE_EXIT_CODE  : 0  (0x0)
+    
+            CHECKPOINT         : 0x0
+    
+            WAIT_HINT          : 0x0
+  guest> dir C:\Windows\System32\drivers\drvlite*
+    exit_code    : 1
+     ������ C �еľ��� Windows
+    
+     �������к��� 70EE-0B18
+    
+    
+    
+     C:\Windows\System32\drivers ��Ŀ¼
+    
+    
+    
+    --- stderr ---
+    �Ҳ����ļ�
+[PASS] trace_scan driver unloaded, no loader/mapped-image leftovers in the driver directory
+  guest> C:\drvlite\run-cli.cmd shutdown
+    exit_code    : 1
+    [SC] StartService ʧ�� 1056:
+    
+    
+    
+    �����ʵ�����������С�
+    
+    
+    
+    mapper: C:\drvlite\start-drv.cmd
+    
+    mapper failed (exit 1056)
+[FAIL] load_unload_cycles guest command failed (1): C:\drvlite\run-cli.cmd shutdown :: exit_code    : 1 | [SC] StartService ʧ�� 1056: | �����ʵ�����������С� | mapper: C:\drvlite\start-drv.cmd | mapper failed (exit 1056)
+=== result: pass=False passed=16 failed=2
+=== evidence: D:\blook-kernel-project\blook-drv-lite\docs\evidence\20261021-drv-lite

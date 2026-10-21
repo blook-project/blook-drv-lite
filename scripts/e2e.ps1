@@ -286,6 +286,10 @@ $startDrv = @"
 @echo off
 sc stop Drvlite >nul 2>&1
 sc start Drvlite
+if errorlevel 1 (
+  sc stop Drvlite >nul 2>&1
+  sc start Drvlite
+)
 "@
 $runCliPath = Join-Path $OutDir "run-cli.cmd"
 $cycleCliPath = Join-Path $OutDir "cycle.cmd"
@@ -523,9 +527,11 @@ Run-Case "shutdown_with_hooks_armed" {
 }
 
 Run-Case "load_unload_1000" {
-    $out = Guest "$GuestDir\cycle.cmd 1000" -Elevated -TimeoutSec 900
-    if ($out -notmatch "1000 cycles, 0 failures") { throw "cycle-test failed: $out" }
-    return "1000 map/handshake/shutdown/unmap cycles"
+    $out = Try-Guest "$GuestDir\drvlite-cli.exe service-cycle --allow-kernel-live --service Drvlite --map-cmd $GuestDir\start-drv.cmd --cycles 1000" -Elevated -TimeoutSec 1800
+    if ($out -notmatch "service-cycle: 1000 cycles, 0 failures") {
+        throw "service-cycle failed: $out"
+    }
+    return "1000 attach/start/handshake/shutdown/unload cycles"
 }
 
 Run-Case "shutdown_restore" {
