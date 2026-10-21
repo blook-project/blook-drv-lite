@@ -53,8 +53,8 @@ function Log([string]$text) {
 function Find-Bvmenv() {
     if ($Bvmenv -and (Test-Path $Bvmenv)) { return $Bvmenv }
     $candidates = @(
-        (Join-Path $RepoRoot "..\blook-vmware-environment\build\windows\x64\releasedbg\bvmenv.exe"),
-        (Join-Path $RepoRoot "..\blook-vmware-environment\build\windows\x64\release\bvmenv.exe")
+        (Join-Path $RepoRoot "..\blook-vmware-environment\build\windows\x64\release\bvmenv.exe"),
+        (Join-Path $RepoRoot "..\blook-vmware-environment\build\windows\x64\releasedbg\bvmenv.exe")
     )
     foreach ($candidate in $candidates) {
         if (Test-Path $candidate) { return [IO.Path]::GetFullPath($candidate) }
