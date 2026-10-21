@@ -265,6 +265,14 @@ foreach ($name in $required) {
     Push (Join-Path $BuildDir $name) "$GuestDir\$name"
 }
 Push (Join-Path $RepoRoot "docs\e2e.md") "$GuestDir\e2e.md"
+# Trust the local TSA root and legacy cross-signing chain so the SHA-256
+# SPC-signed driver also loads on a guest with test-signing disabled.
+Push (Join-Path $RepoRoot "signer\tsa\tsa-root.cer") "$GuestDir\tsa-root.cer"
+Push (Join-Path $RepoRoot "signer\certs\verisign-cscs-2010.cer") "$GuestDir\verisign-cscs-2010.cer"
+Push (Join-Path $RepoRoot "signer\certs\verisign-g5-mcvr.cer") "$GuestDir\verisign-g5-mcvr.cer"
+Guest "certutil -addstore -f root $GuestDir\tsa-root.cer" -Elevated | Out-Null
+Guest "certutil -addstore -f CA $GuestDir\verisign-cscs-2010.cer" -Elevated | Out-Null
+Guest "certutil -addstore -f CA $GuestDir\verisign-g5-mcvr.cer" -Elevated | Out-Null
 # Guest helper batches (avoid nested quoting through bvmenv exec).
 $runCli = @"
 @echo off
