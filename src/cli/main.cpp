@@ -1015,6 +1015,34 @@ int run_command(drvlite::session& session, int argc, char** argv,
             /* Restore the diagnostic magic after the write benchmark. */
             session.write_physical(info.test_page_pa, "DRVLITE-PHYS", 12);
         }
+        /* Syscall-entry interception overhead: same user loop with the
+         * trampoline removed and installed. */
+        auto measure_syscalls = [&]() -> double {
+            constexpr int kCalls = 20000;
+            LARGE_INTEGER start{};
+            LARGE_INTEGER end{};
+            QueryPerformanceCounter(&start);
+            volatile DWORD pid_value = 0;
+            for (int index = 0; index < kCalls; ++index) {
+                pid_value = GetCurrentProcessId();
+            }
+            QueryPerformanceCounter(&end);
+            (void)pid_value;
+            return static_cast<double>(end.QuadPart - start.QuadPart) * 1e9 /
+                   static_cast<double>(frequency.QuadPart) / kCalls;
+        };
+        const double baseline_syscall_ns = measure_syscalls();
+        if (session.infinity_install({}) == DRVLITE_OK) {
+            const double hooked_syscall_ns = measure_syscalls();
+            session.infinity_remove();
+            std::printf(
+                "syscall-overhead        baseline=%8.1f ns  hooked=%8.1f ns  "
+                "delta=%8.1f ns/call\n",
+                baseline_syscall_ns, hooked_syscall_ns,
+                hooked_syscall_ns - baseline_syscall_ns);
+        } else {
+            std::printf("syscall-overhead        unsupported on this build\n");
+        }
         VirtualFree(local, 0, MEM_RELEASE);
         std::printf("bench: %u iterations, %u failures\n", iterations,
                     failures);
