@@ -52,7 +52,7 @@ if ($env:SPC_PFX_BASE64) {
     Import-PfxCertificate -FilePath $pfxPath `
         -CertStoreLocation Cert:\CurrentUser\My -Password $secure | Out-Null
     Remove-Item $pfxPath -ErrorAction SilentlyContinue
-    & $signer sign --cert XINDA `
+    & $signer sign --sha1 --cert XINDA `
         "--tsa-time" "2013-01-01T00:00:00Z" @chains $driver
     if ($LASTEXITCODE -ne 0) { throw "SPC signing failed" }
     $signMode = "pfx-import"
