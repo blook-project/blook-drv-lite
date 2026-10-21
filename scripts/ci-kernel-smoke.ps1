@@ -92,6 +92,21 @@ foreach ($cer in Get-ChildItem $certDir -Filter "*.cer" -ErrorAction SilentlyCon
 }
 Write-Host "imported $((Get-ChildItem $certDir -Filter '*.cer' -ErrorAction SilentlyContinue).Count) certificate(s) into Root/TrustedPublisher"
 
+# Diagnostics: what does the user-mode authenticode policy say, and (when the
+# SDK signtool is available) what does the kernel-mode policy say?
+$sig = Get-AuthenticodeSignature -FilePath $driver
+Write-Host "authenticode (user policy): $($sig.Status) $($sig.StatusMessage)"
+& $signer check $driver 2>&1 | ForEach-Object { Write-Host "spcsign check: $_" }
+$signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" `
+    -Recurse -Filter "signtool.exe" -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+if ($null -ne $signtool) {
+    $verify = (& $signtool.FullName verify /kp /v $driver 2>&1 | Out-String)
+    Write-Host $verify
+} else {
+    Write-Host "signtool not found; skipped /kp verification"
+}
+
 $startScript = Join-Path $env:RUNNER_TEMP "smoke-start-$Service.cmd"
 $bootstrap = Join-Path $env:RUNNER_TEMP "smoke-bootstrap-$Service.bin"
 $startBody = "@echo off`r`nsc stop $Service >nul 2>&1`r`nsc start $Service`r`nsc query $Service`r`n"
