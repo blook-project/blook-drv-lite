@@ -6,8 +6,8 @@
     ./scripts/Build.ps1 -WdkDir 'C:\Program Files (x86)\Windows Kits\10'
  
   The kernel image is signed with the in-repo signer assets inherited from
-  blook-drv (SPC + local TSA). CI only test-signs; this script is what a
-  release run uses.
+  blook-drv (SPC + local TSA). CI signs and loads the driver with it; this is
+  what a release run uses.
 [CmdletBinding()]
 param(
     [switch]$NoTests,
