@@ -1401,12 +1401,13 @@ int main(int argc, char** argv) {
     char temp_file[MAX_PATH] = {};
     std::snprintf(temp_file, sizeof(temp_file), "%sdrvlite-%u.bootstrap",
                   temp_directory, GetCurrentProcessId());
-    if (!write_bootstrap_file(session.bootstrap(), temp_file)) {
+    const char* bootstrap_file =
+        bootstrap_path != nullptr ? bootstrap_path : temp_file;
+    if (!write_bootstrap_file(session.bootstrap(), bootstrap_file)) {
         std::printf("cannot write bootstrap file\n");
         return 1;
     }
-    const char* bootstrap_for_mapper =
-        bootstrap_path != nullptr ? bootstrap_path : temp_file;
+    const char* bootstrap_for_mapper = bootstrap_file;
     std::string mapper_command = replace_all(mapper, "{image}", image);
     mapper_command =
         replace_all(mapper_command, "{bootstrap}", bootstrap_for_mapper);

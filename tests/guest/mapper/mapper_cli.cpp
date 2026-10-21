@@ -60,6 +60,8 @@ int main(int argc, char** argv) {
     const char* image_path = nullptr;
     const char* bootstrap_path = nullptr;
     const char* unmap_text = nullptr;
+    const char* probe_text = nullptr;
+    bool sweep = false;
     for (int index = 1; index < argc; ++index) {
         if (std::strcmp(argv[index], "--image") == 0 && index + 1 < argc) {
             image_path = argv[++index];
@@ -69,7 +71,65 @@ int main(int argc, char** argv) {
         } else if (std::strcmp(argv[index], "--unmap") == 0 &&
                    index + 1 < argc) {
             unmap_text = argv[++index];
+        } else if (std::strcmp(argv[index], "--probe") == 0 &&
+                   index + 1 < argc) {
+            probe_text = argv[++index];
+        } else if (std::strcmp(argv[index], "--sweep") == 0) {
+            sweep = true;
         }
+    }
+    if (sweep) {
+        HANDLE device = CreateFileA(
+            DRVLITE_MAPPER_WIN32_NAME, GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (device == INVALID_HANDLE_VALUE) {
+            std::printf("cannot open mapper device (error %lu)\n",
+                        GetLastError());
+            return 1;
+        }
+        std::vector<uint8_t> in(512, 0);
+        std::vector<uint8_t> out(512, 0);
+        for (unsigned int function = 0x800; function <= 0x820; ++function) {
+            const DWORD code = static_cast<DWORD>((0x8A00u << 16) | (3u << 14) |
+                                                  (function << 2) | 3u);
+            DWORD returned = 0;
+            SetLastError(0);
+            const BOOL ok = DeviceIoControl(
+                device, code, in.data(), static_cast<DWORD>(in.size()),
+                out.data(), static_cast<DWORD>(out.size()), &returned, nullptr);
+            drvlite_map_response echo{};
+            std::memcpy(&echo, out.data(), sizeof(echo));
+            std::printf(
+                "sweep fn=0x%x code=0x%x ok=%d error=%lu ret=%lu "
+                "st=0x%x method=0x%x\n",
+                function, code, ok, GetLastError(), returned, echo.status,
+                echo.method);
+        }
+        CloseHandle(device);
+        return 0;
+    }
+    if (probe_text != nullptr) {
+        HANDLE device = CreateFileA(
+            DRVLITE_MAPPER_WIN32_NAME, GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (device == INVALID_HANDLE_VALUE) {
+            std::printf("cannot open mapper device (error %lu)\n",
+                        GetLastError());
+            return 1;
+        }
+        std::vector<uint8_t> in(512, 0);
+        std::vector<uint8_t> out(512, 0);
+        DWORD returned = 0;
+        const DWORD code =
+            static_cast<DWORD>(std::strtoul(probe_text, nullptr, 0));
+        SetLastError(0);
+        const BOOL ok = DeviceIoControl(
+            device, code, in.data(), static_cast<DWORD>(in.size()), out.data(),
+            static_cast<DWORD>(out.size()), &returned, nullptr);
+        std::printf("probe 0x%x ok=%d error=%lu returned=%lu\n", code, ok,
+                    GetLastError(), returned);
+        CloseHandle(device);
+        return ok ? 0 : 1;
     }
     if (unmap_text != nullptr) {
         HANDLE device = CreateFileA(
@@ -83,20 +143,25 @@ int main(int argc, char** argv) {
         drvlite_unmap_request request{};
         request.mapped_base = static_cast<unsigned long long>(
             std::strtoull(unmap_text, nullptr, 0));
-        drvlite_unmap_response response{};
+        std::vector<uint8_t> unmap_out(256, 0);
+        std::vector<uint8_t> unmap_in(256, 0);
+        std::memcpy(unmap_in.data(), &request, sizeof(request));
         DWORD returned = 0;
         const BOOL ok = DeviceIoControl(
-            device, static_cast<DWORD>(IOCTL_DRVLITE_MAPPER_UNMAP), &request,
-            static_cast<DWORD>(sizeof(request)), &response,
-            static_cast<DWORD>(sizeof(response)), &returned, nullptr);
+            device, static_cast<DWORD>(IOCTL_DRVLITE_MAPPER_UNMAP),
+            unmap_in.data(), static_cast<DWORD>(unmap_in.size()),
+            unmap_out.data(), static_cast<DWORD>(unmap_out.size()), &returned,
+            nullptr);
         const DWORD error = GetLastError();
         CloseHandle(device);
         if (!ok) {
             std::printf("unmap ioctl failed (error %lu)\n", error);
             return 1;
         }
-        if (response.status != 0) {
-            std::printf("unmap status 0x%08x\n", response.status);
+        unsigned int unmap_status = 0;
+        std::memcpy(&unmap_status, unmap_out.data(), sizeof(unmap_status));
+        if (unmap_status != 0) {
+            std::printf("unmap status 0x%08x\n", unmap_status);
             return 1;
         }
         std::printf("unmapped 0x%llx\n", request.mapped_base);
@@ -141,16 +206,27 @@ int main(int argc, char** argv) {
         std::printf("cannot open mapper device (error %lu)\n", GetLastError());
         return 1;
     }
-    drvlite_map_response response{};
+    std::printf("dbg req=%zu rsp=%zu img=%zu boot=%zu ioctl=0x%x\n",
+                sizeof(drvlite_map_request), sizeof(drvlite_map_response),
+                image.size(), bootstrap.size(),
+                static_cast<unsigned>(IOCTL_DRVLITE_MAPPER_MAP));
+    std::vector<uint8_t> out(256, 0);
     DWORD returned = 0;
     const BOOL ok = DeviceIoControl(
         device, static_cast<DWORD>(IOCTL_DRVLITE_MAPPER_MAP), request.data(),
-        static_cast<DWORD>(request.size()), &response,
-        static_cast<DWORD>(sizeof(response)), &returned, nullptr);
+        static_cast<DWORD>(request.size()), out.data(),
+        static_cast<DWORD>(out.size()), &returned, nullptr);
+    drvlite_map_response response{};
+    std::memcpy(&response, out.data(), sizeof(response));
     const DWORD error = GetLastError();
     CloseHandle(device);
     if (!ok) {
-        std::printf("map ioctl failed (error %lu)\n", error);
+        std::printf(
+            "map ioctl failed (error %lu) returned=%lu diag=0x%x "
+            "method=%u input=0x%llx out_size=%u\n",
+            error, returned, response.status, response.method,
+            static_cast<unsigned long long>(response.mapped_base),
+            response.image_size);
         return 1;
     }
     if (response.status != 0) {

@@ -18,11 +18,11 @@
 #define DRVLITE_MAPPER_CTL_CODE(device_type, function, method, access) \
     (((device_type) << 16) | ((access) << 14) | ((function) << 2) | (method))
 
-/* METHOD_BUFFERED (3), FILE_READ_DATA|FILE_WRITE_DATA (3). */
+/* METHOD_NEITHER (0): the driver probes/copies the caller buffers. */
 #define IOCTL_DRVLITE_MAPPER_MAP \
-    DRVLITE_MAPPER_CTL_CODE(DRVLITE_MAPPER_DEVICE_TYPE, 0x801, 3, 3)
+    DRVLITE_MAPPER_CTL_CODE(DRVLITE_MAPPER_DEVICE_TYPE, 0x801, 0, 3)
 #define IOCTL_DRVLITE_MAPPER_UNMAP \
-    DRVLITE_MAPPER_CTL_CODE(DRVLITE_MAPPER_DEVICE_TYPE, 0x802, 3, 3)
+    DRVLITE_MAPPER_CTL_CODE(DRVLITE_MAPPER_DEVICE_TYPE, 0x802, 0, 3)
 
 #pragma pack(push, 8)
 

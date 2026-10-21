@@ -97,7 +97,10 @@ function Guest([string]$Command, [switch]$Elevated, [int]$TimeoutSec = $StepTime
     Log "  guest> $Command"
     if ($result.Output) { Log ($result.Output -split "`n" | ForEach-Object { "    $_" } | Out-String).TrimEnd() }
     if ($result.TimedOut) { throw "guest command timed out: $Command" }
-    if ($result.ExitCode -ne 0) { throw "guest command failed ($($result.ExitCode)): $Command" }
+    if ($result.ExitCode -ne 0) {
+        $tail = ($result.Output -split "`n" | Where-Object { $_.Trim() -ne "" } | Select-Object -Last 6) -join " | "
+        throw "guest command failed ($($result.ExitCode)): $Command :: $tail"
+    }
     return $result.Output
 }
 
@@ -113,8 +116,13 @@ function Try-Guest([string]$Command, [switch]$Elevated, [int]$TimeoutSec = $Step
 }
 
 function Push([string]$Local, [string]$Guest) {
-    $result = Invoke-Bv @("push", $Vm, $Local, $Guest) 120
-    if ($result.ExitCode -ne 0) { throw "push failed: $Local -> $Guest ($($result.Output))" }
+    for ($attempt = 1; $attempt -le 3; ++$attempt) {
+        $result = Invoke-Bv @("push", $Vm, $Local, $Guest) 180
+        if ($result.ExitCode -eq 0) { return }
+        Log "  push attempt $attempt failed for $(Split-Path $Local -Leaf): $($result.Output)"
+        Start-Sleep -Seconds 3
+    }
+    throw "push failed after retries: $Local -> $Guest"
 }
 
 function Record([string]$Name, [string]$Status, [string]$Detail = "", [int]$DurationMs = 0) {
@@ -137,7 +145,7 @@ function Run-Case([string]$Name, [scriptblock]$Body) {
     }
 }
 
-$mapCommand = "$GuestDir\drvlite-mapper-cli.exe --allow-kernel-live --image {image} --bootstrap {bootstrap}"
+$mapCommand = "$GuestDir\map-load.cmd"
 function Run-Cli([string]$SubCommand, [switch]$Elevated, [int]$TimeoutSec = $StepTimeoutSec) {
     # Guest batch file avoids nested-quote mangling through bvmenv exec.
     return Guest "$GuestDir\run-cli.cmd $SubCommand" -Elevated:$Elevated -TimeoutSec:$TimeoutSec
@@ -242,18 +250,31 @@ Push (Join-Path $RepoRoot "docs\e2e.md") "$GuestDir\e2e.md"
 # Guest helper batches (avoid nested quoting through bvmenv exec).
 $runCli = @"
 @echo off
-set DRVLITE_ALLOW_KERNEL_LIVE=1
-"$GuestDir\drvlite-cli.exe" run --allow-kernel-live --image $GuestDir\drvlite.sys --map-cmd "$mapCommand" -- %*
+"$GuestDir\drvlite-cli.exe" run --allow-kernel-live --image $GuestDir\drvlite.sys --bootstrap $GuestDir\boot.bin --map-cmd "$mapCommand" -- %*
 "@
 $cycleCli = @"
 @echo off
-set DRVLITE_ALLOW_KERNEL_LIVE=1
-"$GuestDir\drvlite-cli.exe" cycle-test --allow-kernel-live --image $GuestDir\drvlite.sys --cycles %1
+setlocal enabledelayedexpansion
+set FAIL=0
+for /l %%i in (1,1,%1) do (
+  call "$GuestDir\run-cli.cmd" shutdown >nul 2>&1 || set FAIL=1
+  call "$GuestDir\unmap.cmd" >nul 2>&1
+)
+if %FAIL%==1 (echo cycle-test: %1 cycles with failures & exit /b 1)
+echo cycle-test: %1 cycles, 0 failures
 "@
 $unmapCli = @"
 @echo off
-set DRVLITE_ALLOW_KERNEL_LIVE=1
-"$GuestDir\drvlite-mapper-cli.exe" --allow-kernel-live --unmap %1
+sc stop DrvliteLoader >nul 2>&1
+sc delete DrvliteLoader >nul 2>&1
+exit /b 0
+"@
+$mapLoad = @"
+@echo off
+sc stop DrvliteLoader >nul 2>&1
+sc delete DrvliteLoader >nul 2>&1
+sc create DrvliteLoader type= kernel binPath= $GuestDir\drvlite-mapper.sys
+sc start DrvliteLoader
 "@
 $runCliPath = Join-Path $OutDir "run-cli.cmd"
 $cycleCliPath = Join-Path $OutDir "cycle.cmd"
@@ -261,38 +282,12 @@ $unmapCliPath = Join-Path $OutDir "unmap.cmd"
 Set-Content -Path $runCliPath -Value $runCli -Encoding ascii
 Set-Content -Path $cycleCliPath -Value $cycleCli -Encoding ascii
 Set-Content -Path $unmapCliPath -Value $unmapCli -Encoding ascii
+$mapLoadPath = Join-Path $OutDir "map-load.cmd"
+Set-Content -Path $mapLoadPath -Value $mapLoad -Encoding ascii
 Push $runCliPath "$GuestDir\run-cli.cmd"
 Push $cycleCliPath "$GuestDir\cycle.cmd"
 Push $unmapCliPath "$GuestDir\unmap.cmd"
-
-Run-Case "mapper_service_install" {
-    Try-Guest "sc stop DrvliteMapper" -Elevated | Out-Null
-    Try-Guest "sc delete DrvliteMapper" -Elevated | Out-Null
-    $signedWith = "spc-signer"
-    $installed = $false
-    try {
-        Guest "sc create DrvliteMapper type= kernel binPath= $GuestDir\drvlite-mapper.sys" -Elevated | Out-Null
-        Guest "sc start DrvliteMapper" -Elevated | Out-Null
-        $installed = $true
-    } catch {
-        Log "  Mapper start failed with the SPC signer; trying a test certificate"
-    }
-    if (-not $installed) {
-        $signedWith = "test-cert"
-        $certScript = Join-Path $RepoRoot "scripts\sign-test.ps1"
-        & $certScript -Files (Join-Path $BuildDir "drvlite-mapper.sys") | Out-Null
-        Push (Join-Path $RepoRoot "build\test-certs\drvlite-test.cer") "$GuestDir\drvlite-test.cer"
-        Guest "certutil -addstore -f Root $GuestDir\drvlite-test.cer" -Elevated | Out-Null
-        Guest "certutil -addstore -f TrustedPublisher $GuestDir\drvlite-test.cer" -Elevated | Out-Null
-        Try-Guest "sc stop DrvliteMapper" -Elevated | Out-Null
-        Try-Guest "sc delete DrvliteMapper" -Elevated | Out-Null
-        Guest "sc create DrvliteMapper type= kernel binPath= $GuestDir\drvlite-mapper.sys" -Elevated | Out-Null
-        Guest "sc start DrvliteMapper" -Elevated | Out-Null
-    }
-    $status = Guest "sc query DrvliteMapper" -Elevated
-    if ($status -notmatch "RUNNING") { throw "mapper service is not running: $status" }
-    return "service running ($signedWith)"
-}
+Push $mapLoadPath "$GuestDir\map-load.cmd"
 
 # ---------------------------------------------------------------------------
 # 3. target process
@@ -466,15 +461,15 @@ Run-Case "handle_protected_process" {
     if (-not $match.Success) {
         return "skipped: no PPL/AV process present in the guest"
     }
-    $pid = $match.Groups[1].Value
-    $out = Run-Cli "handle --pid $pid --full --kill"
+    $targetProc = $match.Groups[1].Value
+    $out = Run-Cli "handle --pid $targetProc --full --kill"
     if ($out -notmatch "granted  : 0x1fffff") {
         throw "protected-process handle was not raised to full access: $out"
     }
     if ($out -match "terminate: yes") {
-        return "PPL process $pid terminated through a full-permission handle"
+        return "PPL process $targetProc terminated through a full-permission handle"
     }
-    return "PPL process ${pid}: GrantedAccess raised to 0x1fffff; terminate blocked by PPL policy (expected on hardened AV)"
+    return "PPL process ${targetProc}: GrantedAccess raised to 0x1fffff; terminate blocked by PPL policy (expected on hardened AV)"
 }
 
 Run-Case "shutdown_with_hooks_armed" {

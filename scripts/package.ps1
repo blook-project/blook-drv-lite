@@ -34,7 +34,9 @@ foreach ($name in $required) {
     if (-not (Test-Path $path)) { throw "missing build artifact: $path" }
     Copy-Item $path $stageBin
 }
-foreach ($optional in @("drvlite-target.exe", "drvlite-unsigned.sys")) {
+foreach ($optional in @("drvlite-target.exe", "drvlite-unsigned.sys",
+        "drvlite-example.exe", "drvlite-mapper.sys",
+        "drvlite-mapper-cli.exe")) {
     $path = Join-Path $BinDir $optional
     if (Test-Path $path) { Copy-Item $path $stageBin }
 }

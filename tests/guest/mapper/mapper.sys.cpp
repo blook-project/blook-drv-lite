@@ -300,234 +300,198 @@ NTSTATUS call_entry(byte_t* mapped, const pe_headers& headers,
     return entry(const_cast<void*>(bootstrap), nullptr);
 }
 
-void unload(PDRIVER_OBJECT driver_object);
-NTSTATUS create_close(PDEVICE_OBJECT device, PIRP irp);
-NTSTATUS device_control(PDEVICE_OBJECT device, PIRP irp);
+/* Reads a whole file into a non-paged pool buffer. */
+NTSTATUS read_whole_file(const wchar_t* path, void** buffer, ULONG* size) {
+    *buffer = nullptr;
+    *size = 0;
+    UNICODE_STRING file_name;
+    RtlInitUnicodeString(&file_name, path);
+    OBJECT_ATTRIBUTES attributes;
+    InitializeObjectAttributes(&attributes, &file_name,
+                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+                               nullptr, nullptr);
+    HANDLE handle = nullptr;
+    IO_STATUS_BLOCK status_block{};
+    NTSTATUS status =
+        ZwCreateFile(&handle, GENERIC_READ, &attributes, &status_block, nullptr,
+                     FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, FILE_OPEN,
+                     FILE_SYNCHRONOUS_IO_NONALERT, nullptr, 0);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+    FILE_STANDARD_INFORMATION file_info{};
+    status = ZwQueryInformationFile(handle, &status_block, &file_info,
+                                    sizeof(file_info), FileStandardInformation);
+    if (!NT_SUCCESS(status) || file_info.EndOfFile.QuadPart <= 0 ||
+        file_info.EndOfFile.QuadPart > static_cast<LONGLONG>(kMaxImageSize)) {
+        ZwClose(handle);
+        return STATUS_INVALID_PARAMETER;
+    }
+    const ULONG length = static_cast<ULONG>(file_info.EndOfFile.QuadPart);
+    void* data = ExAllocatePool2(POOL_FLAG_NON_PAGED, length, kMapperTag);
+    if (data == nullptr) {
+        ZwClose(handle);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    status = ZwReadFile(handle, nullptr, nullptr, nullptr, &status_block, data,
+                        length, nullptr, nullptr);
+    ZwClose(handle);
+    if (!NT_SUCCESS(status)) {
+        ExFreePoolWithTag(data, kMapperTag);
+        return status;
+    }
+    *buffer = data;
+    *size = length;
+    return STATUS_SUCCESS;
+}
+
+void* g_mapped = nullptr;
+void* g_bootstrap = nullptr;
+
+void unload(PDRIVER_OBJECT driver_object) {
+    UNREFERENCED_PARAMETER(driver_object);
+    if (g_mapped != nullptr) {
+        ExFreePoolWithTag(g_mapped, kMapperTag);
+        g_mapped = nullptr;
+    }
+    if (g_bootstrap != nullptr) {
+        ExFreePoolWithTag(g_bootstrap, kMapperTag);
+        g_bootstrap = nullptr;
+    }
+    DbgPrint("[drvlite-loader] unloaded\n");
+}
+
+/* Maps the e2e driver image from the driver directory and calls its entry
+ * point with a kernel copy of the bootstrap file. The file-based load avoids
+ * an IOCTL surface entirely, which keeps the harness minimal. */
+NTSTATUS load_and_call() {
+    const wchar_t* image_path =
+        L"\\SystemRoot\\System32\\drivers\\drvlite-lite.sys";
+    const wchar_t* bootstrap_path =
+        L"\\SystemRoot\\System32\\drivers\\drvlite-boot.bin";
+    void* image = nullptr;
+    ULONG image_size = 0;
+    NTSTATUS status = read_whole_file(image_path, &image, &image_size);
+    if (!NT_SUCCESS(status)) {
+        DbgPrint("[drvlite-loader] read image failed 0x%x\n", status);
+        return STATUS_ACCESS_DENIED;
+    }
+    ULONG bootstrap_size = 0;
+    const NTSTATUS bootstrap_status =
+        read_whole_file(bootstrap_path, &g_bootstrap, &bootstrap_size);
+    if (!NT_SUCCESS(bootstrap_status)) {
+        DbgPrint("[drvlite-loader] no bootstrap (0x%x); mapping only\n",
+                 bootstrap_status);
+        g_bootstrap = nullptr;
+    }
+    const auto* image_bytes = static_cast<const byte_t*>(image);
+    pe_headers headers{};
+    if (!parse_headers(image_bytes, image_size, &headers)) {
+        status = STATUS_INVALID_IMAGE_FORMAT;
+        goto fail;
+    }
+    {
+        const dword_t mapped_size = headers.size_of_image;
+        void* mapped = ExAllocatePool2(POOL_FLAG_NON_PAGED_EXECUTE, mapped_size,
+                                       kMapperTag);
+        dword_t method = 1;
+        if (mapped == nullptr) {
+            mapped =
+                ExAllocatePool2(POOL_FLAG_NON_PAGED, mapped_size, kMapperTag);
+            method = 2;
+        }
+        if (mapped == nullptr) {
+            status = STATUS_INSUFFICIENT_RESOURCES;
+            goto fail;
+        }
+        RtlZeroMemory(mapped, mapped_size);
+        auto* destination = static_cast<byte_t*>(mapped);
+        const dword_t headers_size = headers.size_of_headers < mapped_size
+                                         ? headers.size_of_headers
+                                         : mapped_size;
+        RtlCopyMemory(destination, image_bytes, headers_size);
+        for (dword_t index = 0; index < headers.section_count; ++index) {
+            const section_record& section = headers.sections[index];
+            if (section.virtual_address >= mapped_size) {
+                continue;
+            }
+            dword_t to_copy = section.raw_size;
+            if (to_copy > section.virtual_size) {
+                to_copy = section.virtual_size;
+            }
+            if (section.virtual_address + to_copy > mapped_size) {
+                to_copy = mapped_size - section.virtual_address;
+            }
+            if (to_copy == 0) {
+                continue;
+            }
+            if (section.raw_offset + to_copy > image_size) {
+                status = STATUS_INVALID_IMAGE_FORMAT;
+                ExFreePoolWithTag(mapped, kMapperTag);
+                goto fail;
+            }
+            RtlCopyMemory(destination + section.virtual_address,
+                          image_bytes + section.raw_offset, to_copy);
+        }
+        const int64_t_ delta = reinterpret_cast<int64_t_>(mapped) -
+                               static_cast<int64_t_>(headers.image_base);
+        if (!apply_relocations(destination, headers, delta)) {
+            status = STATUS_INVALID_IMAGE_FORMAT;
+            ExFreePoolWithTag(mapped, kMapperTag);
+            goto fail;
+        }
+        if (!resolve_imports(destination, headers)) {
+            status = STATUS_NOT_FOUND;
+            ExFreePoolWithTag(mapped, kMapperTag);
+            goto fail;
+        }
+        status = call_entry(destination, headers, g_bootstrap);
+        if (!NT_SUCCESS(status)) {
+            DbgPrint("[drvlite-loader] entry failed 0x%x\n", status);
+            ExFreePoolWithTag(mapped, kMapperTag);
+            goto fail;
+        }
+        g_mapped = mapped;
+        DbgPrint("[drvlite-loader] mapped at %p (method %u)\n", mapped, method);
+    }
+    ExFreePoolWithTag(image, kMapperTag);
+    return STATUS_SUCCESS;
+
+fail:
+    if (g_bootstrap != nullptr) {
+        ExFreePoolWithTag(g_bootstrap, kMapperTag);
+        g_bootstrap = nullptr;
+    }
+    ExFreePoolWithTag(image, kMapperTag);
+    return status;
+}
+
+}  // namespace
+
+namespace {
+
+/* Map and call from a system thread: DriverEntry returns immediately so the
+ * service manager never waits on the mapped driver's own startup
+ * handshake. */
+VOID map_thread(PVOID context) {
+    UNREFERENCED_PARAMETER(context);
+    const NTSTATUS status = load_and_call();
+    DbgPrint("[drvlite-loader] map thread status=0x%x\n", status);
+    PsTerminateSystemThread(STATUS_SUCCESS);
+}
 
 }  // namespace
 
 extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT driver_object,
                                 PUNICODE_STRING registry_path) {
     UNREFERENCED_PARAMETER(registry_path);
-    KeInitializeSpinLock(&g_mapped_lock);
-    UNICODE_STRING device_name;
-    RtlInitUnicodeString(&device_name, L"\\Device\\DrvliteMapper");
-    PDEVICE_OBJECT device = nullptr;
-    NTSTATUS status = IoCreateDevice(
-        driver_object, sizeof(mapper_device_extension), &device_name,
-        DRVLITE_MAPPER_DEVICE_TYPE, 0, FALSE, &device);
-    if (!NT_SUCCESS(status)) {
-        return status;
-    }
-    device->Flags |= DO_BUFFERED_IO;
-    auto* extension =
-        static_cast<mapper_device_extension*>(device->DeviceExtension);
-    extension->device = device;
-    UNICODE_STRING symlink;
-    RtlInitUnicodeString(&symlink, L"\\??\\DrvliteMapper");
-    status = IoCreateSymbolicLink(&symlink, &device_name);
-    if (!NT_SUCCESS(status)) {
-        IoDeleteDevice(device);
-        return status;
-    }
-    driver_object->MajorFunction[IRP_MJ_CREATE] = &create_close;
-    driver_object->MajorFunction[IRP_MJ_CLOSE] = &create_close;
-    driver_object->MajorFunction[IRP_MJ_DEVICE_CONTROL] = &device_control;
     driver_object->DriverUnload = &unload;
-    DbgPrint("[drvlite-mapper] ready\n");
+    HANDLE thread = nullptr;
+    const NTSTATUS status =
+        PsCreateSystemThread(&thread, THREAD_ALL_ACCESS, nullptr, nullptr,
+                             nullptr, map_thread, nullptr);
+    if (NT_SUCCESS(status) && thread != nullptr) {
+        ZwClose(thread);
+    }
     return STATUS_SUCCESS;
 }
-
-namespace {
-
-void unload(PDRIVER_OBJECT driver_object) {
-    UNICODE_STRING symlink;
-    RtlInitUnicodeString(&symlink, L"\\??\\DrvliteMapper");
-    IoDeleteSymbolicLink(&symlink);
-    if (driver_object->DeviceObject != nullptr) {
-        IoDeleteDevice(driver_object->DeviceObject);
-    }
-}
-
-NTSTATUS create_close(PDEVICE_OBJECT device, PIRP irp) {
-    UNREFERENCED_PARAMETER(device);
-    irp->IoStatus.Status = STATUS_SUCCESS;
-    irp->IoStatus.Information = 0;
-    IoCompleteRequest(irp, IO_NO_INCREMENT);
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS complete_irp(PIRP irp, NTSTATUS status, ULONG information) {
-    irp->IoStatus.Status = status;
-    irp->IoStatus.Information = information;
-    IoCompleteRequest(irp, IO_NO_INCREMENT);
-    return status;
-}
-
-NTSTATUS device_control(PDEVICE_OBJECT device, PIRP irp) {
-    UNREFERENCED_PARAMETER(device);
-    PIO_STACK_LOCATION stack = IoGetCurrentIrpStackLocation(irp);
-    if (stack->MajorFunction != IRP_MJ_DEVICE_CONTROL) {
-        return complete_irp(irp, STATUS_INVALID_DEVICE_REQUEST, 0);
-    }
-    if (stack->Parameters.DeviceIoControl.IoControlCode ==
-        IOCTL_DRVLITE_MAPPER_UNMAP) {
-        const ULONG input_size =
-            stack->Parameters.DeviceIoControl.InputBufferLength;
-        const ULONG output_size =
-            stack->Parameters.DeviceIoControl.OutputBufferLength;
-        if (irp->AssociatedIrp.SystemBuffer == nullptr ||
-            input_size < sizeof(drvlite_unmap_request) ||
-            output_size < sizeof(drvlite_unmap_response)) {
-            return complete_irp(irp, STATUS_BUFFER_TOO_SMALL, 0);
-        }
-        const auto* request = static_cast<const drvlite_unmap_request*>(
-            irp->AssociatedIrp.SystemBuffer);
-        auto* response = static_cast<drvlite_unmap_response*>(
-            irp->AssociatedIrp.SystemBuffer);
-        const qword_t base = request->mapped_base;
-        NTSTATUS status = STATUS_NOT_FOUND;
-        if (base != 0 && base >= 0xFFFF800000000000ULL) {
-            KIRQL irql = KeAcquireSpinLockRaiseToDpc(&g_mapped_lock);
-            for (dword_t index = 0; index < kMaxMappedImages; ++index) {
-                if (g_mapped_images[index].base == base) {
-                    g_mapped_images[index].base = 0;
-                    g_mapped_images[index].size = 0;
-                    status = STATUS_SUCCESS;
-                    break;
-                }
-            }
-            KeReleaseSpinLock(&g_mapped_lock, irql);
-            if (NT_SUCCESS(status)) {
-                ExFreePoolWithTag(reinterpret_cast<void*>(base), kMapperTag);
-            }
-        }
-        RtlZeroMemory(response, sizeof(*response));
-        response->status = static_cast<unsigned int>(status);
-        return complete_irp(irp, status, sizeof(*response));
-    }
-    if (stack->Parameters.DeviceIoControl.IoControlCode !=
-        IOCTL_DRVLITE_MAPPER_MAP) {
-        return complete_irp(irp, STATUS_INVALID_DEVICE_REQUEST, 0);
-    }
-    const ULONG input_size =
-        stack->Parameters.DeviceIoControl.InputBufferLength;
-    const ULONG output_size =
-        stack->Parameters.DeviceIoControl.OutputBufferLength;
-    if (irp->AssociatedIrp.SystemBuffer == nullptr ||
-        input_size < sizeof(drvlite_map_request) ||
-        output_size < sizeof(drvlite_map_response)) {
-        return complete_irp(irp, STATUS_BUFFER_TOO_SMALL, 0);
-    }
-    const auto* request = static_cast<const drvlite_map_request*>(
-        irp->AssociatedIrp.SystemBuffer);
-    if (request->image_size == 0 || request->image_size > kMaxImageSize ||
-        request->bootstrap_size == 0 || request->bootstrap_size > 0x1000) {
-        return complete_irp(irp, STATUS_INVALID_PARAMETER, 0);
-    }
-    if (request->image_offset != sizeof(drvlite_map_request) ||
-        request->bootstrap_offset <
-            request->image_offset + request->image_size ||
-        request->bootstrap_offset + request->bootstrap_size > input_size) {
-        return complete_irp(irp, STATUS_INVALID_PARAMETER, 0);
-    }
-    const auto* image_bytes =
-        static_cast<const byte_t*>(irp->AssociatedIrp.SystemBuffer) +
-        request->image_offset;
-    const auto* bootstrap_bytes =
-        static_cast<const byte_t*>(irp->AssociatedIrp.SystemBuffer) +
-        request->bootstrap_offset;
-
-    /* The entry point must see a kernel copy of the bootstrap, never the
-     * system buffer. Keep it alive for the lifetime of the image. */
-    void* kernel_bootstrap = ExAllocatePool2(
-        POOL_FLAG_NON_PAGED, request->bootstrap_size, kMapperTag);
-    if (kernel_bootstrap == nullptr) {
-        return complete_irp(irp, STATUS_INSUFFICIENT_RESOURCES, 0);
-    }
-    RtlCopyMemory(kernel_bootstrap, bootstrap_bytes, request->bootstrap_size);
-
-    pe_headers headers{};
-    if (!parse_headers(image_bytes, request->image_size, &headers)) {
-        return complete_irp(irp, STATUS_INVALID_IMAGE_FORMAT, 0);
-    }
-    const dword_t image_size = headers.size_of_image;
-    void* mapped =
-        ExAllocatePool2(POOL_FLAG_NON_PAGED_EXECUTE, image_size, kMapperTag);
-    dword_t method = 1;
-    if (mapped == nullptr) {
-        mapped = ExAllocatePool2(POOL_FLAG_NON_PAGED, image_size, kMapperTag);
-        method = 2;
-    }
-    if (mapped == nullptr) {
-        return complete_irp(irp, STATUS_INSUFFICIENT_RESOURCES, 0);
-    }
-    RtlZeroMemory(mapped, image_size);
-    auto* destination = static_cast<byte_t*>(mapped);
-
-    const dword_t headers_size = headers.size_of_headers < image_size
-                                     ? headers.size_of_headers
-                                     : image_size;
-    RtlCopyMemory(destination, image_bytes, headers_size);
-    for (dword_t index = 0; index < headers.section_count; ++index) {
-        const section_record& section = headers.sections[index];
-        if (section.virtual_address >= image_size) {
-            continue;
-        }
-        dword_t to_copy = section.raw_size;
-        if (to_copy > section.virtual_size) {
-            to_copy = section.virtual_size;
-        }
-        if (section.virtual_address + to_copy > image_size) {
-            to_copy = image_size - section.virtual_address;
-        }
-        if (to_copy == 0) {
-            continue;
-        }
-        if (section.raw_offset + to_copy > request->image_size) {
-            return complete_irp(irp, STATUS_INVALID_IMAGE_FORMAT, 0);
-        }
-        RtlCopyMemory(destination + section.virtual_address,
-                      image_bytes + section.raw_offset, to_copy);
-    }
-
-    const int64_t_ delta = reinterpret_cast<int64_t_>(mapped) -
-                           static_cast<int64_t_>(headers.image_base);
-    if (!apply_relocations(destination, headers, delta)) {
-        return complete_irp(irp, STATUS_INVALID_IMAGE_FORMAT, 0);
-    }
-    if (!resolve_imports(destination, headers)) {
-        return complete_irp(irp, STATUS_NOT_FOUND, 0);
-    }
-
-    const NTSTATUS entry_status =
-        call_entry(destination, headers, kernel_bootstrap);
-    auto* response =
-        static_cast<drvlite_map_response*>(irp->AssociatedIrp.SystemBuffer);
-    RtlZeroMemory(response, sizeof(*response));
-    response->status = static_cast<unsigned int>(entry_status);
-    response->method = method;
-    response->mapped_base = reinterpret_cast<unsigned long long>(mapped);
-    response->image_size = image_size;
-    if (!NT_SUCCESS(entry_status)) {
-        /* The driver failed to initialise; do not leave a mapped image. */
-        ExFreePoolWithTag(mapped, kMapperTag);
-        return complete_irp(irp, entry_status, sizeof(*response));
-    }
-    {
-        KIRQL irql = KeAcquireSpinLockRaiseToDpc(&g_mapped_lock);
-        for (dword_t index = 0; index < kMaxMappedImages; ++index) {
-            if (g_mapped_images[index].base == 0) {
-                g_mapped_images[index].base = reinterpret_cast<qword_t>(mapped);
-                g_mapped_images[index].size = image_size;
-                break;
-            }
-        }
-        KeReleaseSpinLock(&g_mapped_lock, irql);
-    }
-    DbgPrint("[drvlite-mapper] mapped at %p (method %u), entry status 0x%x\n",
-             mapped, method, entry_status);
-    return complete_irp(irp, STATUS_SUCCESS, sizeof(*response));
-}
-
-}  // namespace

@@ -1,0 +1,162 @@
+{
+  "schema": "bvmenv.e2e.v1",
+  "run_id": "20261021T132456Z",
+  "version": "0.1.0",
+  "vm": "vm-drv-lite",
+  "guest": {
+    "nt_build": "",
+    "drvlite_sys_size": 71168,
+    "mapper_signed": true
+  },
+  "cases": [
+    {
+      "name": "mapper_service_install",
+      "status": "pass",
+      "detail": "service running (spc-signer)",
+      "duration_ms": 47004
+    },
+    {
+      "name": "target_process_start",
+      "status": "pass",
+      "detail": "pid=4684 tid=1832 buffer=0x2746b070000",
+      "duration_ms": 30622
+    },
+    {
+      "name": "target_process_second",
+      "status": "pass",
+      "detail": "pid=1528",
+      "duration_ms": 21298
+    },
+    {
+      "name": "manual_map_attach",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\run-cli.cmd info",
+      "duration_ms": 6144
+    },
+    {
+      "name": "physical_read_write",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\run-cli.cmd phys",
+      "duration_ms": 6195
+    },
+    {
+      "name": "kernel_read_write",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\run-cli.cmd modules",
+      "duration_ms": 6036
+    },
+    {
+      "name": "process_memory_cr3",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\run-cli.cmd read-proc 4684 0x2746b070000 8",
+      "duration_ms": 6125
+    },
+    {
+      "name": "process_module_list",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\run-cli.cmd modules 4684",
+      "duration_ms": 16201
+    },
+    {
+      "name": "dse_disable_load_unsigned",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\run-cli.cmd dse",
+      "duration_ms": 63244
+    },
+    {
+      "name": "handle_full_access",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\run-cli.cmd handle --pid 1528 --full --kill",
+      "duration_ms": 6395
+    },
+    {
+      "name": "infinityhook_counters",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\run-cli.cmd ssn NtQueryInformationThread",
+      "duration_ms": 6114
+    },
+    {
+      "name": "hwbp_detection_bypass",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\run-cli.cmd hwbp-test 4684 1832",
+      "duration_ms": 6275
+    },
+    {
+      "name": "negative_input_fuzz",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\run-cli.cmd fuzz",
+      "duration_ms": 6264
+    },
+    {
+      "name": "stress_memory_ops",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\run-cli.cmd stress 4684 0x2746b070000 1000",
+      "duration_ms": 6403
+    },
+    {
+      "name": "perf_benchmark",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\run-cli.cmd bench --iterations 200",
+      "duration_ms": 6274
+    },
+    {
+      "name": "page_paths_and_crossings",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\run-cli.cmd memtest 4684 0x2746b070000",
+      "duration_ms": 6186
+    },
+    {
+      "name": "dse_concurrent_load",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\run-cli.cmd dse-load-test C:\\drvlite\\drvlite-unsigned.sys 20",
+      "duration_ms": 6176
+    },
+    {
+      "name": "handle_protected_process",
+      "status": "fail",
+      "detail": "Cannot overwrite variable PID because it is read-only or constant.",
+      "duration_ms": 9279
+    },
+    {
+      "name": "shutdown_with_hooks_armed",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\run-cli.cmd hook-shutdown-test",
+      "duration_ms": 6330
+    },
+    {
+      "name": "load_unload_1000",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\cycle.cmd 1000",
+      "duration_ms": 9459
+    },
+    {
+      "name": "shutdown_restore",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\run-cli.cmd shutdown",
+      "duration_ms": 6145
+    },
+    {
+      "name": "trace_scan",
+      "status": "pass",
+      "detail": "no drvlite service/registry/driverquery trace (mapper harness excluded)",
+      "duration_ms": 47963
+    },
+    {
+      "name": "load_unload_cycles",
+      "status": "fail",
+      "detail": "guest command failed (1): C:\\drvlite\\run-cli.cmd shutdown",
+      "duration_ms": 8732
+    }
+  ],
+  "pass": false,
+  "passed": 4,
+  "failed": 19,
+  "artifacts": [
+    "result.json",
+    "cases.txt",
+    "state.json",
+    "screen.png",
+    "target.json",
+    "bench.txt"
+  ]
+}
