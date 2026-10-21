@@ -445,11 +445,15 @@ NTSTATUS load_and_call() {
             ExFreePoolWithTag(mapped, kMapperTag);
             goto fail;
         }
-        status = call_entry(destination, headers, g_bootstrap);
-        if (!NT_SUCCESS(status)) {
-            DbgPrint("[drvlite-loader] entry failed 0x%x\n", status);
-            ExFreePoolWithTag(mapped, kMapperTag);
-            goto fail;
+        /* Bisect switch: false = map only (proves the PE mapping path). */
+        constexpr bool kCallEntry = false;
+        if (kCallEntry && g_bootstrap != nullptr) {
+            status = call_entry(destination, headers, g_bootstrap);
+            if (!NT_SUCCESS(status)) {
+                DbgPrint("[drvlite-loader] entry failed 0x%x\n", status);
+                ExFreePoolWithTag(mapped, kMapperTag);
+                goto fail;
+            }
         }
         g_mapped = mapped;
         DbgPrint("[drvlite-loader] mapped at %p (method %u)\n", mapped, method);

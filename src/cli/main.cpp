@@ -1263,6 +1263,29 @@ bool write_bootstrap_file(const kc_bootstrap& bootstrap, const char* path) {
     return written == sizeof(bootstrap);
 }
 
+/* Service-load (dev/e2e) bootstrap delivery: write the kc_bootstrap as a
+ * REG_BINARY value under the service's Parameters key so the driver's
+ * DriverEntry can read it without a mapper. */
+bool write_registry_bootstrap(const char* service, const kc_bootstrap& boot) {
+    if (service == nullptr) {
+        return false;
+    }
+    char path[512] = {};
+    std::snprintf(path, sizeof(path),
+                  "SYSTEM\\CurrentControlSet\\Services\\%s\\Parameters",
+                  service);
+    HKEY key = nullptr;
+    if (RegCreateKeyExA(HKEY_LOCAL_MACHINE, path, 0, nullptr, 0, KEY_SET_VALUE,
+                        nullptr, &key, nullptr) != ERROR_SUCCESS) {
+        return false;
+    }
+    const LONG result =
+        RegSetValueExA(key, "Bootstrap", 0, REG_BINARY,
+                       reinterpret_cast<const BYTE*>(&boot), sizeof(boot));
+    RegCloseKey(key);
+    return result == ERROR_SUCCESS;
+}
+
 std::string replace_all(std::string text, const std::string& from,
                         const std::string& to) {
     size_t position = 0;
@@ -1350,6 +1373,7 @@ int main(int argc, char** argv) {
     const char* image = nullptr;
     const char* mapper = nullptr;
     const char* bootstrap_path = nullptr;
+    const char* service_name = nullptr;
     uint32_t region_size = 0x40000;
     uint32_t timeout_ms = 5000;
     int index = 2;
@@ -1367,6 +1391,9 @@ int main(int argc, char** argv) {
         } else if (std::strcmp(argument, "--bootstrap") == 0 &&
                    index + 1 < argc) {
             bootstrap_path = argv[++index];
+        } else if (std::strcmp(argument, "--service") == 0 &&
+                   index + 1 < argc) {
+            service_name = argv[++index];
         } else if (std::strcmp(argument, "--region") == 0 && index + 1 < argc) {
             parse_u32(argv[++index], &region_size);
         } else if (std::strcmp(argument, "--timeout-ms") == 0 &&
@@ -1408,9 +1435,17 @@ int main(int argc, char** argv) {
         return 1;
     }
     const char* bootstrap_for_mapper = bootstrap_file;
+    if (service_name != nullptr &&
+        !write_registry_bootstrap(service_name, session.bootstrap())) {
+        std::printf("cannot write the service bootstrap value\n");
+        return 1;
+    }
     std::string mapper_command = replace_all(mapper, "{image}", image);
     mapper_command =
         replace_all(mapper_command, "{bootstrap}", bootstrap_for_mapper);
+    if (service_name != nullptr) {
+        mapper_command = replace_all(mapper_command, "{service}", service_name);
+    }
     std::printf("mapper: %s\n", mapper_command.c_str());
     const int mapper_status = std::system(mapper_command.c_str());
     DeleteFileA(temp_file);

@@ -145,7 +145,7 @@ function Run-Case([string]$Name, [scriptblock]$Body) {
     }
 }
 
-$mapCommand = "$GuestDir\map-load.cmd"
+$mapCommand = "$GuestDir\start-drv.cmd"
 function Run-Cli([string]$SubCommand, [switch]$Elevated, [int]$TimeoutSec = $StepTimeoutSec) {
     # Guest batch file avoids nested-quote mangling through bvmenv exec.
     return Guest "$GuestDir\run-cli.cmd $SubCommand" -Elevated:$Elevated -TimeoutSec:$TimeoutSec
@@ -180,15 +180,19 @@ foreach ($name in $required) {
 
 $signer = Join-Path $RepoRoot "signer\spcsign\spcsign.exe"
 if (Test-Path $signer) {
-    Log "=== signing test mapper"
-    $signArgs = @("sign", "--sha1", "--cert", "XINDA",
-        "--tsa-time", "2013-01-01T00:00:00Z",
-        "--chain", (Join-Path $RepoRoot "signer\certs\verisign-cscs-2010.cer"),
-        "--chain", (Join-Path $RepoRoot "signer\certs\verisign-g5-mcvr.cer"),
-        (Join-Path $BuildDir "drvlite-mapper.sys"))
-    $sign = & $signer @signArgs 2>&1
-    $sign | ForEach-Object { Log "  $_" }
-    if ($LASTEXITCODE -ne 0) { throw "mapper signing failed" }
+    Log "=== signing driver + test mapper"
+    foreach ($artefact in @("drvlite.sys", "drvlite-mapper.sys")) {
+        $signArgs = @("sign", "--sha1", "--cert", "XINDA",
+            "--tsa-time", "2013-01-01T00:00:00Z",
+            "--chain",
+            (Join-Path $RepoRoot "signer\certs\verisign-cscs-2010.cer"),
+            "--chain",
+            (Join-Path $RepoRoot "signer\certs\verisign-g5-mcvr.cer"),
+            (Join-Path $BuildDir $artefact))
+        $sign = & $signer @signArgs 2>&1
+        $sign | ForEach-Object { Log "  $_" }
+        if ($LASTEXITCODE -ne 0) { throw "signing failed: $artefact" }
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -239,9 +243,9 @@ if (-not (Wait-Guest)) { throw "guest did not become ready" }
 # 2. push + mapper service
 # ---------------------------------------------------------------------------
 Log "=== pushing artefacts"
-# A previously running mapper service locks its image file; stop it first.
-Try-Guest "sc stop DrvliteMapper" -Elevated | Out-Null
-Try-Guest "sc delete DrvliteMapper" -Elevated | Out-Null
+# Unload any previous service-load instance; it also locks its image file.
+Try-Guest "sc stop Drvlite" -Elevated | Out-Null
+Try-Guest "sc delete Drvlite" -Elevated | Out-Null
 Guest "if not exist $GuestDir mkdir $GuestDir" -Elevated | Out-Null
 foreach ($name in $required) {
     Push (Join-Path $BuildDir $name) "$GuestDir\$name"
@@ -250,7 +254,7 @@ Push (Join-Path $RepoRoot "docs\e2e.md") "$GuestDir\e2e.md"
 # Guest helper batches (avoid nested quoting through bvmenv exec).
 $runCli = @"
 @echo off
-"$GuestDir\drvlite-cli.exe" run --allow-kernel-live --image $GuestDir\drvlite.sys --bootstrap $GuestDir\boot.bin --map-cmd "$mapCommand" -- %*
+"$GuestDir\drvlite-cli.exe" run --allow-kernel-live --service Drvlite --image $GuestDir\drvlite.sys --bootstrap $GuestDir\boot.bin --map-cmd "$mapCommand" -- %*
 "@
 $cycleCli = @"
 @echo off
@@ -265,29 +269,27 @@ echo cycle-test: %1 cycles, 0 failures
 "@
 $unmapCli = @"
 @echo off
-sc stop DrvliteLoader >nul 2>&1
-sc delete DrvliteLoader >nul 2>&1
+sc stop Drvlite >nul 2>&1
 exit /b 0
 "@
-$mapLoad = @"
+$startDrv = @"
 @echo off
-sc stop DrvliteLoader >nul 2>&1
-sc delete DrvliteLoader >nul 2>&1
-sc create DrvliteLoader type= kernel binPath= $GuestDir\drvlite-mapper.sys
-sc start DrvliteLoader
+sc stop Drvlite >nul 2>&1
+sc start Drvlite
 "@
 $runCliPath = Join-Path $OutDir "run-cli.cmd"
 $cycleCliPath = Join-Path $OutDir "cycle.cmd"
 $unmapCliPath = Join-Path $OutDir "unmap.cmd"
+$startDrvPath = Join-Path $OutDir "start-drv.cmd"
 Set-Content -Path $runCliPath -Value $runCli -Encoding ascii
 Set-Content -Path $cycleCliPath -Value $cycleCli -Encoding ascii
 Set-Content -Path $unmapCliPath -Value $unmapCli -Encoding ascii
-$mapLoadPath = Join-Path $OutDir "map-load.cmd"
-Set-Content -Path $mapLoadPath -Value $mapLoad -Encoding ascii
+Set-Content -Path $startDrvPath -Value $startDrv -Encoding ascii
 Push $runCliPath "$GuestDir\run-cli.cmd"
 Push $cycleCliPath "$GuestDir\cycle.cmd"
 Push $unmapCliPath "$GuestDir\unmap.cmd"
-Push $mapLoadPath "$GuestDir\map-load.cmd"
+Push $startDrvPath "$GuestDir\start-drv.cmd"
+Guest "sc create Drvlite type= kernel binPath= $GuestDir\drvlite.sys" -Elevated | Out-Null
 
 # ---------------------------------------------------------------------------
 # 3. target process
@@ -495,16 +497,15 @@ Run-Case "shutdown_restore" {
 }
 
 Run-Case "trace_scan" {
-    $running = Try-Guest "sc query DrvliteMapper" -Elevated
-    $reg1 = Try-Guest "reg query HKLM\SYSTEM\CurrentControlSet\Services\Drvlite /s" -Elevated
-    $reg2 = Try-Guest "reg query HKLM\SYSTEM\CurrentControlSet\Services\drvlite-lite /s" -Elevated
-    $drivers = Try-Guest "driverquery /v" -Elevated
-    $scan = "$running`n$reg1`n$reg2`n$drivers"
-    if ($scan -match "drvlite\.sys") { throw "mapped driver appears in driverquery: $scan" }
-    if ($scan -match "SYSTEM\\\\CurrentControlSet\\\\Services\\\\Drvlite") {
-        throw "mapped driver left a registry key: $scan"
+    $service = Try-Guest "sc query Drvlite" -Elevated
+    if ($service -match "RUNNING") {
+        throw "driver service still running after shutdown: $service"
     }
-    return "no drvlite service/registry/driverquery trace (mapper harness excluded)"
+    $drivers = Try-Guest "dir C:\Windows\System32\drivers\drvlite*" -Elevated
+    if ($drivers -match "drvlite-lite\.sys|drvlite-boot\.bin") {
+        throw "leftover loader artefacts in the driver directory: $drivers"
+    }
+    return "driver unloaded, no loader/mapped-image leftovers in the driver directory"
 }
 
 Run-Case "load_unload_cycles" {
