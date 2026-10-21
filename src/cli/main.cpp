@@ -901,7 +901,13 @@ int run_command(drvlite::session& session, int argc, char** argv,
             }
             CONTEXT context{};
             context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+            /* Suspend first: Windows then reports the saved context,
+             * including the debug registers, deterministically. */
+            const DWORD suspended = SuspendThread(thread);
             const BOOL ok = GetThreadContext(thread, &context);
+            if (suspended != static_cast<DWORD>(-1)) {
+                ResumeThread(thread);
+            }
             std::printf("%s: dr0=0x%llx dr7=0x%llx ok=%d\n", label,
                         static_cast<unsigned long long>(context.Dr0),
                         static_cast<unsigned long long>(context.Dr7), ok);

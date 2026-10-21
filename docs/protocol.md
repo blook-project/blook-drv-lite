@@ -32,7 +32,7 @@ application specific and are reported inside replies/batch status arrays.
 | 0x8015 | MEM_PROCESS_WRITE | `process_mem_req` + data | header | same, physical write |
 | 0x8016 | MEM_BATCH_READ | `drvlite_batch_read_req` {pid,count,total,flags,ranges[32]} | `drvlite_batch_read_rsp` {count,total,failed,status[32],data} | per-range status; failed ranges are zero-filled |
 | 0x8017 | MEM_PROCESS_QUERY | `{pid}` | `{pid,flags,eprocess,cr3,peb,image_base,image_size}` | flags: `CR3_VALIDATED`; replies `DRVLITE_ERR_NOT_FOUND` when validation fails |
-| 0x8020 | MODULE_LIST | `{pid,max_count,flags}` (`pid=0` = kernel) | `{pid,count,total,flags,modules[]}` | kernel: `PsLoadedModuleList`; process: PEB `Ldr` via CR3 |
+| 0x8020 | MODULE_LIST | `{pid,max_count,flags}` (`pid=0` = kernel; `flags` = start index for pagination) | `{pid,count,total,flags,modules[]}` | kernel: `PsLoadedModuleList`; process: PEB `Ldr` via CR3; `total` is the full count, `count` the returned window |
 | 0x8021 | MODULE_DUMP | `{pid,size,address,flags}` | `{pid,size,copied,flags,address,data}` | tolerant read: holes are zero-filled |
 | 0x8030 | DSE_QUERY | `drvlite_dse_req` | `drvlite_dse_rsp` | supported/patched/current/original/address/ci.dll info |
 | 0x8031 | DSE_SET | `{value}` | same as query | patch + read-back verification |

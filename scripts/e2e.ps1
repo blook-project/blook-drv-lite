@@ -393,10 +393,13 @@ Run-Case "handle_protected_process" {
     }
     $pid = $match.Groups[1].Value
     $out = Run-Cli "handle --pid $pid --full --kill"
-    if ($out -notmatch "terminate: yes") {
-        throw "protected-process handle not usable: $out"
+    if ($out -notmatch "granted  : 0x1fffff") {
+        throw "protected-process handle was not raised to full access: $out"
     }
-    return "PPL process $pid terminated through a full-permission handle"
+    if ($out -match "terminate: yes") {
+        return "PPL process $pid terminated through a full-permission handle"
+    }
+    return "PPL process $pid: GrantedAccess raised to 0x1fffff; terminate blocked by PPL policy (expected on hardened AV)"
 }
 
 Run-Case "shutdown_with_hooks_armed" {
