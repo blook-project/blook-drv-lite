@@ -196,7 +196,7 @@ $signer = Join-Path $RepoRoot "signer\spcsign\spcsign.exe"
 if (Test-Path $signer) {
     Log "=== signing driver + test mapper"
     foreach ($artefact in @("drvlite.sys", "drvlite-mapper.sys")) {
-        $signArgs = @("sign", "--sha1", "--cert", "XINDA",
+        $signArgs = @("sign", "--cert", "XINDA",
             "--tsa-time", "2013-01-01T00:00:00Z",
             "--chain",
             (Join-Path $RepoRoot "signer\certs\verisign-cscs-2010.cer"),

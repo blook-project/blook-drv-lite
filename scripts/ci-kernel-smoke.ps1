@@ -28,16 +28,34 @@ if (-not (Test-Path $signer)) { throw "missing signer: $signer" }
 $chains = @("--chain", (Join-Path $repoRoot "signer\certs\verisign-cscs-2010.cer"),
     "--chain", (Join-Path $repoRoot "signer\certs\verisign-g5-mcvr.cer"))
 $signMode = "none"
+# Trust the local TSA root and the legacy cross-signing chain for the runner's
+# code-integrity policy. certutil targets LocalMachine here (CI runs elevated);
+# the CurrentUser root import fails non-interactively.
+$tsaRoot = Join-Path $repoRoot "signer\tsa\tsa-root.cer"
+if (Test-Path $tsaRoot) {
+    & certutil.exe -addstore -f root $tsaRoot 2>&1 | Out-Null
+}
+foreach ($chain in @(
+        (Join-Path $repoRoot "signer\certs\verisign-cscs-2010.cer"),
+        (Join-Path $repoRoot "signer\certs\verisign-g5-mcvr.cer"))) {
+    if (Test-Path $chain) { & certutil.exe -addstore -f CA $chain 2>&1 | Out-Null }
+}
 if ($env:SPC_PFX_BASE64) {
     # True in-CI signing with the real SPC certificate (repository secret).
+    # The shipped signer's --pfx path is broken, so import into CurrentUser\My
+    # and sign by certificate subject.
     $pfxPath = Join-Path $env:RUNNER_TEMP "spc-sign.pfx"
     [IO.File]::WriteAllBytes($pfxPath,
         [Convert]::FromBase64String($env:SPC_PFX_BASE64))
-    & $signer sign --pfx $pfxPath --password $env:SPC_PFX_PASSWORD `
-        "--tsa-time" "2013-01-01T00:00:00Z" @chains $driver
+    $secure = ConvertTo-SecureString -String $env:SPC_PFX_PASSWORD `
+        -AsPlainText -Force
+    Import-PfxCertificate -FilePath $pfxPath `
+        -CertStoreLocation Cert:\CurrentUser\My -Password $secure | Out-Null
     Remove-Item $pfxPath -ErrorAction SilentlyContinue
-    if ($LASTEXITCODE -ne 0) { throw "SPC signing (pfx) failed" }
-    $signMode = "pfx"
+    & $signer sign --cert XINDA `
+        "--tsa-time" "2013-01-01T00:00:00Z" @chains $driver
+    if ($LASTEXITCODE -ne 0) { throw "SPC signing failed" }
+    $signMode = "pfx-import"
 } else {
     # No signing secret available: still exercise real kernel execution by
     # loading the SPC-signed driver from the latest published release. The

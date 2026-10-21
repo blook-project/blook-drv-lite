@@ -53,7 +53,7 @@ try {
         if (-not (Test-Path $Driver)) { throw "no driver image at $Driver" }
         $signer = Join-Path $RepoRoot "signer\spcsign\spcsign.exe"
         if (-not (Test-Path $signer)) { throw "missing signer: $signer" }
-        $signArgs = @("sign", "--sha1", "--cert", "XINDA",
+        $signArgs = @("sign", "--cert", "XINDA",
             "--tsa-time", "2013-01-01T00:00:00Z",
             "--chain", (Join-Path $RepoRoot "signer\certs\verisign-cscs-2010.cer"),
             "--chain", (Join-Path $RepoRoot "signer\certs\verisign-g5-mcvr.cer"),
