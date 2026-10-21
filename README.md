@@ -119,6 +119,22 @@ Capabilities are reported per session through `query_info().features`; every
 unsupported operation returns a status code instead of crashing. See
 [docs/safety.md](docs/safety.md) for the full risk matrix.
 
+## Host safety (hard rule)
+
+**Kernel experiments only run inside a bvmenv VMware guest fork.** Loading a
+driver, manual mapping, DSE patching, InfinityHook, physical/CR3 access and
+payload mapping must never happen on the physical host. This is enforced, not
+just documented:
+
+- `drvlite-cli run` and `drvlite-mapper-cli` refuse to start unless
+  `DRVLITE_ALLOW_KERNEL_LIVE=1` is set; `scripts/e2e.ps1` sets it only inside
+  its `bvmenv exec` guest commands.
+- `scripts/e2e.ps1` requires an explicit `-Vm <name>`, rejects host-like
+  names, and creates/resets that VM through `bvmenv` only (no `vmrun`, no
+  host fallback).
+- `scripts/check-host-clean.ps1` verifies the host has no `drvlite*`/`blook*`
+  services, driver files, registry keys or test-signing changes.
+
 ## Safety
 
 All user input crosses the kchannel transport and is length/range validated

@@ -23,6 +23,7 @@ add_requires("gtest 1.17.0")
 
 set_arch("x64")
 set_languages("cxx17")
+add_defines("_CRT_SECURE_NO_WARNINGS")
 set_defaultmode("releasedbg")
 add_rules("mode.debug", "mode.releasedbg", "mode.release")
 add_rules("plugin.compile_commands.autoupdate", {outputdir = "build"})

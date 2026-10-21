@@ -12,7 +12,7 @@
 # Produces docs/evidence/<yyyyMMdd>-drv-lite/{result.json,cases.txt,*.log,png}
 [CmdletBinding()]
 param(
-    [string]$Vm = "vm-drv-lite",
+    [string]$Vm = "",
     [string]$Bvmenv = "",
     [string]$OutDir = "",
     [int]$StepTimeoutSec = 180,
@@ -21,6 +21,14 @@ param(
     [switch]$NoReset
 )
 $ErrorActionPreference = "Stop"
+
+# Host safety: kernel code may only run inside a bvmenv guest fork.
+if ([string]::IsNullOrWhiteSpace($Vm)) {
+    throw "-Vm <name> is required: kernel experiments only run inside a bvmenv-managed guest"
+}
+if ($Vm -match '^(host|localhost|this|local)$') {
+    throw "refusing to run kernel experiments: -Vm must name a bvmenv guest (host execution is forbidden)"
+}
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $GuestDir = "C:\drvlite"
 $BuildDir = Join-Path $RepoRoot "build\windows\x64\release"
@@ -119,7 +127,7 @@ function Run-Case([string]$Name, [scriptblock]$Body) {
 
 $mapCommand = "$GuestDir\drvlite-mapper-cli.exe --image {image} --bootstrap {bootstrap}"
 function Run-Cli([string]$SubCommand, [switch]$Elevated, [int]$TimeoutSec = $StepTimeoutSec) {
-    $command = "$GuestDir\drvlite-cli.exe run --image $GuestDir\drvlite.sys " +
+    $command = "set DRVLITE_ALLOW_KERNEL_LIVE=1 && $GuestDir\drvlite-cli.exe run --image $GuestDir\drvlite.sys " +
         "--map-cmd `"$mapCommand`" -- $SubCommand"
     return Guest $command -Elevated:$Elevated -TimeoutSec:$TimeoutSec
 }
@@ -208,9 +216,22 @@ Push (Join-Path $RepoRoot "docs\e2e.md") "$GuestDir\e2e.md"
 
 Run-Case "mapper_service_install" {
     Guest "sc stop DrvliteMapper >nul 2>&1 & sc delete DrvliteMapper >nul 2>&1" -Elevated | Out-Null
-    Guest "sc create DrvliteMapper type= kernel binPath= $GuestDir\drvlite-mapper.sys && sc start DrvliteMapper" -Elevated | Out-Null
-    $status = Guest "sc query DrvliteMapper | findstr RUNNING" -Elevated
-    return "service running"
+    $signedWith = "spc-signer"
+    try {
+        Guest "set DRVLITE_ALLOW_KERNEL_LIVE=1 && sc create DrvliteMapper type= kernel binPath= $GuestDir\drvlite-mapper.sys && sc start DrvliteMapper" -Elevated | Out-Null
+    } catch {
+        # The SPC signer may not chain in a pure test-signing guest. Fall back
+        # to an ephemeral self-signed certificate imported into the guest.
+        $signedWith = "test-cert"
+        $certScript = Join-Path $RepoRoot "scripts\sign-test.ps1"
+        & $certScript -Files (Join-Path $BuildDir "drvlite-mapper.sys") | Out-Null
+        Push (Join-Path $RepoRoot "build\test-certs\drvlite-test.cer") "$GuestDir\drvlite-test.cer"
+        Guest "certutil -addstore -f Root $GuestDir\drvlite-test.cer && certutil -addstore -f TrustedPublisher $GuestDir\drvlite-test.cer" -Elevated | Out-Null
+        Guest "sc stop DrvliteMapper >nul 2>&1 & sc delete DrvliteMapper >nul 2>&1" -Elevated | Out-Null
+        Guest "set DRVLITE_ALLOW_KERNEL_LIVE=1 && sc create DrvliteMapper type= kernel binPath= $GuestDir\drvlite-mapper.sys && sc start DrvliteMapper" -Elevated | Out-Null
+    }
+    Guest "sc query DrvliteMapper | findstr RUNNING" -Elevated | Out-Null
+    return "service running ($signedWith)"
 }
 
 # ---------------------------------------------------------------------------
@@ -291,13 +312,13 @@ Run-Case "process_module_list" {
 
 Run-Case "dse_disable_load_unsigned" {
     $baseline = $null
-    try { Guest "sc create DrvliteUnsigned type= kernel binPath= $GuestDir\drvlite-unsigned.sys && sc start DrvliteUnsigned" -Elevated | Out-Null; $baseline = "loaded" }
+    try { Guest "set DRVLITE_ALLOW_KERNEL_LIVE=1 && sc create DrvliteUnsigned type= kernel binPath= $GuestDir\drvlite-unsigned.sys && sc start DrvliteUnsigned" -Elevated | Out-Null; $baseline = "loaded" }
     catch { $baseline = "blocked" }
     Guest "sc stop DrvliteUnsigned >nul 2>&1 & sc delete DrvliteUnsigned >nul 2>&1" -Elevated | Out-Null
     $dse = Run-Cli "dse"
     if ($dse -notmatch "supported : yes") { throw "DSE resolver unsupported: $dse" }
     Run-Cli "dse --disable" | Out-Null
-    Guest "sc create DrvliteUnsigned type= kernel binPath= $GuestDir\drvlite-unsigned.sys && sc start DrvliteUnsigned" -Elevated | Out-Null
+    Guest "set DRVLITE_ALLOW_KERNEL_LIVE=1 && sc create DrvliteUnsigned type= kernel binPath= $GuestDir\drvlite-unsigned.sys && sc start DrvliteUnsigned" -Elevated | Out-Null
     $loaded = Guest "sc query DrvliteUnsigned | findstr RUNNING" -Elevated
     Guest "sc stop DrvliteUnsigned >nul 2>&1 & sc delete DrvliteUnsigned >nul 2>&1" -Elevated | Out-Null
     Run-Cli "dse --restore" | Out-Null
@@ -365,7 +386,7 @@ Run-Case "load_unload_cycles" {
         if ($out -notmatch "shutdown: ok") { throw "cycle $index shutdown failed" }
         $mapped = [regex]::Match($out, "mapped (0x[0-9a-f]+)")
         if ($mapped.Success) {
-            Guest "$GuestDir\drvlite-mapper-cli.exe --unmap $($mapped.Groups[1].Value)" -Elevated | Out-Null
+            Guest "set DRVLITE_ALLOW_KERNEL_LIVE=1 && $GuestDir\drvlite-mapper-cli.exe --unmap $($mapped.Groups[1].Value)" -Elevated | Out-Null
         }
     }
     $alive = Guest "echo alive"

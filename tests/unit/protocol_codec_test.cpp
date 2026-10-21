@@ -130,4 +130,18 @@ TEST(ProtocolCodec, PayloadPointersAreBoundsChecked) {
     EXPECT_EQ(nullptr, payload_after(nullptr, 32, 16));
 }
 
+TEST(ProtocolCodec, RejectsMessagesAboveTheTransferLimit) {
+    std::vector<u8> oversized(DRVLITE_MAX_TRANSFER + 8, 0);
+    auto* header = reinterpret_cast<drvlite_query_info_req*>(oversized.data());
+    header->hdr.magic = DRVLITE_REQ_MAGIC;
+    header->hdr.abi_major = DRVLITE_ABI_MAJOR;
+    header->hdr.abi_minor = DRVLITE_ABI_MINOR;
+    header->hdr.op = DRVLITE_OP_QUERY_INFO;
+    header->hdr.size = sizeof(drvlite_query_info_req);
+    const header_check check =
+        check_request(oversized.data(), static_cast<u32>(oversized.size()),
+                      DRVLITE_OP_QUERY_INFO, sizeof(drvlite_query_info_req));
+    EXPECT_EQ(codec_code::too_large, check.code);
+}
+
 }  // namespace

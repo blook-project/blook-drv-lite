@@ -40,6 +40,16 @@ bool read_file(const char* path, std::vector<uint8_t>* bytes) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    /* Host safety: this tool maps kernel code, so it only runs inside a VM
+     * guest. scripts/e2e.ps1 sets the proof variable for its guest commands. */
+    const char* allow = std::getenv("DRVLITE_ALLOW_KERNEL_LIVE");
+    if (allow == nullptr || std::strcmp(allow, "1") != 0) {
+        std::printf(
+            "refusing to map kernel code on this machine.\n"
+            "Only run this inside a bvmenv VM guest "
+            "(DRVLITE_ALLOW_KERNEL_LIVE=1).\n");
+        return 3;
+    }
     const char* image_path = nullptr;
     const char* bootstrap_path = nullptr;
     const char* unmap_text = nullptr;

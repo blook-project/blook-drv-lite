@@ -161,4 +161,35 @@ TEST(Detour, FailsClosedOnBadPrologue) {
                              0xFFFFF88000200000ULL, &plan));
 }
 
+TEST(X86Decode, CopyRelocatedFailsWhenRelativeTargetIsUnreachable) {
+    /* A rel32 cannot reach a destination more than 2 GiB away: the copy must
+     * fail instead of silently truncating the new displacement. */
+    const u64 source_address = 0xFFFFF80000001000ULL;
+    const u64 target = 0xFFFFF80000002000ULL;
+    const u64 destination_address = 0xFFFFF88000100000ULL;
+    std::vector<u8> source(5, 0);
+    source[0] = 0xE8;
+    const i32 relative = static_cast<i32>(target - (source_address + 5));
+    for (u32 index = 0; index < 4; ++index) {
+        source[1 + index] = static_cast<u8>((relative >> (8 * index)) & 0xFF);
+    }
+    std::vector<u8> destination(8, 0xCC);
+    EXPECT_EQ(0u,
+              copy_relocated(source.data(), source_address, destination.data(),
+                             destination_address, 5, destination.size()));
+}
+
+TEST(Detour, FailsOnNonCanonicalAddresses) {
+    const std::vector<u8> prologue = {0x48, 0x89, 0x5C, 0x24, 0x08, 0x57,
+                                      0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B,
+                                      0x05, 0x34, 0x12, 0x00, 0x00};
+    detour_plan plan;
+    EXPECT_FALSE(plan_detour(prologue.data(), prologue.size(),
+                             0xFFFFF80000100000ULL, 0x0000800000000001ULL,
+                             0xFFFFF80000200000ULL, &plan));
+    EXPECT_FALSE(plan_detour(prologue.data(), prologue.size(), 0,
+                             0xFFFFF80000300000ULL, 0xFFFFF80000200000ULL,
+                             &plan));
+}
+
 }  // namespace

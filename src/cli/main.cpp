@@ -907,6 +907,17 @@ int main(int argc, char** argv) {
                     DRVLITE_ABI_MINOR);
         return 0;
     }
+    if (command == "run") {
+        const char* allow = std::getenv("DRVLITE_ALLOW_KERNEL_LIVE");
+        if (allow == nullptr || std::strcmp(allow, "1") != 0) {
+            std::printf(
+                "refusing to load kernel code on this machine.\n"
+                "Kernel experiments are only allowed inside a bvmenv "
+                "VM guest.\nRun through scripts/e2e.ps1 or set "
+                "DRVLITE_ALLOW_KERNEL_LIVE=1 in the VM guest.\n");
+            return 3;
+        }
+    }
     if (command != "run") {
         /* Every other command needs a session; tell the user how to make
          * one instead of failing deep inside the SDK. */

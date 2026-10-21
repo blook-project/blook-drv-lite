@@ -25,6 +25,7 @@
 #include <ntddk.h>
 #include <blook/kchannel_km.h>
 #else
+#include <stddef.h>
 #include <stdint.h>
 #endif
 
@@ -487,6 +488,29 @@ DRVLITE_STATIC_ASSERT(sizeof(drvlite_dse_rsp) == 72, "dse rsp size");
 DRVLITE_STATIC_ASSERT(sizeof(drvlite_infinity_install_req) ==
                           24 + 4 * DRVLITE_MAX_SSN_FILTER,
                       "infinity install req size");
+/* Wire layout pinned so kernel and SDK cannot drift silently. */
+DRVLITE_STATIC_ASSERT(sizeof(drvlite_query_info_rsp) == 104,
+                      "query info rsp size");
+DRVLITE_STATIC_ASSERT(offsetof(drvlite_mem_rsp, data) == 40,
+                      "memory reply payload offset");
+DRVLITE_STATIC_ASSERT(offsetof(drvlite_process_mem_rsp, data) == 48,
+                      "process memory reply payload offset");
+DRVLITE_STATIC_ASSERT(sizeof(drvlite_batch_read_req) == 544,
+                      "batch read request size");
+DRVLITE_STATIC_ASSERT(offsetof(drvlite_batch_read_rsp, data) == 164,
+                      "batch read reply payload offset");
+DRVLITE_STATIC_ASSERT(offsetof(drvlite_module_list_rsp, modules) == 40,
+                      "module list payload offset");
+DRVLITE_STATIC_ASSERT(offsetof(drvlite_module_dump_rsp, data) == 48,
+                      "module dump payload offset");
+DRVLITE_STATIC_ASSERT(sizeof(drvlite_handle_open_rsp) == 56,
+                      "handle open reply size");
+DRVLITE_STATIC_ASSERT(sizeof(drvlite_infinity_status_rsp) == 80,
+                      "infinity status reply size");
+DRVLITE_STATIC_ASSERT(sizeof(drvlite_hwbp_hide_rsp) == 36,
+                      "hwbp hide reply size");
+DRVLITE_STATIC_ASSERT(sizeof(drvlite_syscall_shield_req) == 96,
+                      "syscall shield request size");
 
 #if defined(__cplusplus)
 } /* extern "C" */

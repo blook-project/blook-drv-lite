@@ -51,7 +51,10 @@ bool dse_initialize() {
     if (resolved.code != core::dse_code::ok) {
         /* Windows 7 era kernels have g_CiEnabled in ntoskrnl. Supported
          * builds (Win10/11) fail here and report unsupported. */
-        image = nullptr;
+        if (image != nullptr) {
+            ExFreePoolWithTag(image, 'esdD');
+            image = nullptr;
+        }
         u64 nt_base = 0;
         u32 nt_size = 0;
         core::dse_resolution legacy =
