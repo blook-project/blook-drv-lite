@@ -100,11 +100,22 @@ program lives in `examples/read_process_dse.cpp` (built as `drvlite-example`).
 
 ## Signing
 
-Test images are signed with the `signer/` assets inherited from the
-`blook-drv` project (SPC + local TSA); CI signs and loads the kernel driver with it (no test-signing mode)
-only. No private key is stored in this repository. Manual mapping does not
-require a valid signature, but the guest test helper drivers used by the e2e
-suite are SPC-signed as well.
+Kernel images are signed with the real SPC signer assets in `signer/`
+(inherited from `blook-drv`, SPC certificate + local TSA, SHA-1 digest with a
+2013 timestamp — the same scheme releases use). No test-signing mode is
+required and no private key is stored in this repository; CI receives the PFX
+through the `SPC_PFX_BASE64` / `SPC_PFX_PASSWORD` repository secrets.
+
+CI runs a **real kernel-load smoke job** on `windows-latest`: it signs the
+built `drvlite.sys` with the SPC signer, imports the TSA root/cross-signing
+chain, loads the driver with `sc create/start`, drives it through
+`drvlite-cli` (`info`, then a kernel read that must return the MZ header), and
+requires the service to reach `RUNNING` before stopping and deleting it.
+
+Note: the shipped signer's SHA-256 digest path currently produces an invalid
+Authenticode page-hash attribute (`HashMismatch`), so `--sha1` is used. Manual
+mapping does not require a valid signature; the e2e helper drivers are signed
+with the same SPC signer.
 
 ## Supported builds
 
