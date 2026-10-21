@@ -132,7 +132,7 @@ $targets = @()
 try {
     if (-not (Test-Path $driver)) { throw "driver file missing before sc create: $driver" }
     Log "driver path: $driver"
-    $create = Invoke-Sc @("create", $service, "type=", "kernel", "binPath= \??\$driver")
+    $create = Invoke-Sc @("create", $service, "type=", "kernel", "binPath=", $driver)
     if ($create.code -ne 0) {
         $qc = Invoke-Sc @("qc", $service)
         throw "sc create failed (exit $($create.code)): $($create.out) | qc: $($qc.out) | path: $driver"
