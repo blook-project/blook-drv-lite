@@ -112,7 +112,7 @@ suite are test-signed.
 |---|---|---|---|
 | Windows 10 19041 / 19045 x64 | yes | yes | layout-checked, clean failure otherwise |
 | Windows 11 22000 / 22621 / 22631 x64 | yes | yes | layout-checked, clean failure otherwise |
-| Windows 11 26100 x64 | yes | yes | validated in the e2e VM |
+| Windows 11 26100 x64 | yes | yes | layout-checked; e2e matrix defined (evidence under `docs/evidence/` when the VM run lands) |
 | KVA shadow (`KiSystemCall64Shadow`) | yes | yes | `DRVLITE_ERR_UNSUPPORTED` (no shadow mapping for the trampoline) |
 | HVCI / VBS enabled | memory r/w where the OS allows | rejected/reported unsupported | unsupported |
 | ARM64 | not supported | — | — |

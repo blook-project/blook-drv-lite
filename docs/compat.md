@@ -16,12 +16,12 @@ bitmap for a session.
 | process read/write via CR3 + PEB validation | yes | yes | yes | yes |
 | 4 KiB / 2 MiB / 1 GiB page walks | yes | yes | yes | yes |
 | kernel/process module enumeration + dumps | yes | yes | yes | yes |
-| DSE `g_CiOptions` resolve/patch/restore | yes | yes | yes | yes (e2e) |
+| DSE `g_CiOptions` resolve/patch/restore | yes | yes | yes | yes |
 | legacy `g_CiEnabled` fallback (Win7 era) | if present | if present | if present | not present |
-| ObReference handle `GrantedAccess` rewrite | yes | yes | yes | yes (e2e) |
-| InfinityHook (LSTAR trampoline) | layout-checked | layout-checked | layout-checked | yes (e2e) |
-| DR hiding for `NtGetContextThread` | layout-checked | layout-checked | layout-checked | yes (e2e) |
-| syscall shield | layout-checked | layout-checked | layout-checked | yes (e2e) |
+| ObReference handle `GrantedAccess` rewrite | yes | yes | yes | yes |
+| InfinityHook (LSTAR trampoline) | layout-checked | layout-checked | layout-checked | yes |
+| DR hiding for `NtGetContextThread` | layout-checked | layout-checked | layout-checked | yes |
+| syscall shield | layout-checked | layout-checked | layout-checked | yes |
 
 "layout-checked" means the driver verifies the expected `KiSystemCall64`
 prologue (`swapgs`/KPCR loads) and dispatch pattern (`mov rax, r10; call rax`)

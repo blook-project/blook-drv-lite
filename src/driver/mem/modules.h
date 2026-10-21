@@ -20,14 +20,14 @@ struct module_entry {
 };
 
 /* Kernel module list (PsLoadedModuleList). Returns the number written. */
-u32 kernel_modules(module_entry* output, u32 capacity);
+u32 kernel_modules(module_entry* output, u32 capacity, u32 skip);
 
 /* Finds a kernel module by base name ("ci.dll", case insensitive). */
 bool kernel_module_find(const char* base_name, u64* base, u32* size);
 
 /* Target process modules through PEB->Ldr (requires the validated CR3). */
 u32 process_modules(PEPROCESS process, u64 cr3, module_entry* output,
-                    u32 capacity);
+                    u32 capacity, u32 skip);
 
 /* Dumps `size` bytes at `address` from the kernel (pid == 0) or process
  * address space. Unmapped holes are zero-filled; *copied receives the number

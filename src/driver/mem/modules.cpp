@@ -51,18 +51,22 @@ const char* base_name_of(const char* path) {
 
 }  // namespace
 
-u32 kernel_modules(module_entry* output, u32 capacity) {
+u32 kernel_modules(module_entry* output, u32 capacity, u32 skip) {
     if (output == nullptr || capacity == 0 || PsLoadedModuleList == nullptr) {
         return 0;
     }
-    u32 count = 0;
+    u32 total = 0;
+    u32 written = 0;
     __try {
         for (PLIST_ENTRY link = PsLoadedModuleList->Flink;
-             link != PsLoadedModuleList && count < capacity;
-             link = link->Flink) {
+             link != PsLoadedModuleList; link = link->Flink) {
+            const u32 index = total++;
+            if (index < skip || written >= capacity) {
+                continue;
+            }
             auto* entry = CONTAINING_RECORD(link, kldr_data_table_entry,
                                             in_load_order_links);
-            module_entry& item = output[count];
+            module_entry& item = output[written++];
             item.base = reinterpret_cast<u64>(entry->dll_base);
             item.size = entry->size_of_image;
             item.flags = 0;
@@ -76,12 +80,11 @@ u32 kernel_modules(module_entry* output, u32 capacity) {
                 ++name_length_value;
             }
             item.name_len = name_length_value;
-            ++count;
         }
     } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return count;
+        return total;
     }
-    return count;
+    return total;
 }
 
 bool kernel_module_find(const char* base_name, u64* base, u32* size) {
@@ -123,7 +126,7 @@ bool kernel_module_find(const char* base_name, u64* base, u32* size) {
 }
 
 u32 process_modules(PEPROCESS process, u64 cr3, module_entry* output,
-                    u32 capacity) {
+                    u32 capacity, u32 skip) {
     if (process == nullptr || cr3 == 0 || output == nullptr || capacity == 0) {
         return 0;
     }
@@ -142,13 +145,22 @@ u32 process_modules(PEPROCESS process, u64 cr3, module_entry* output,
     if (!core::read_u64(reader, cr3, head, &link)) {
         return 0;
     }
-    u32 count = 0;
-    for (u32 guard = 0; guard < 1024 && count < capacity; ++guard) {
+    u32 total = 0;
+    u32 written = 0;
+    for (u32 guard = 0; guard < 1024; ++guard) {
         if (link == head) {
             break;
         }
         const u64 entry = link - kLdrEntryInLoadOrderLinks;
-        module_entry& item = output[count];
+        const u32 index = total++;
+        u64 next = 0;
+        if (index < skip || written >= capacity) {
+            if (!core::read_u64(reader, cr3, link, &next)) {
+                break;
+            }
+            link = next;
+            continue;
+        }
         u64 dll_base = 0;
         u64 size_of_image_read = 0;
         if (!core::read_u64(reader, cr3, entry + kLdrEntryDllBase, &dll_base) ||
@@ -170,6 +182,7 @@ u32 process_modules(PEPROCESS process, u64 cr3, module_entry* output,
                             &name_buffer)) {
             break;
         }
+        module_entry& item = output[written++];
         item.base = dll_base;
         item.size = size_of_image;
         item.flags = 0;
@@ -193,14 +206,12 @@ u32 process_modules(PEPROCESS process, u64 cr3, module_entry* output,
             ++name_length_value;
         }
         item.name_len = name_length_value;
-        ++count;
-        u64 next = 0;
         if (!core::read_u64(reader, cr3, link, &next)) {
             break;
         }
         link = next;
     }
-    return count;
+    return total;
 }
 
 bool module_dump(u32 pid, u64 address, void* output, u32 size, u32* copied) {

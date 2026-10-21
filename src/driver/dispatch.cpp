@@ -360,28 +360,33 @@ kc_status module_list(const void* input, u32 input_length, void* output,
     }
     auto* response = static_cast<drvlite_module_list_rsp*>(output);
     response->pid = request->pid;
-    u32 count = 0;
+    u32 total = 0;
     if (request->pid == 0) {
-        count = kernel_modules(
-            reinterpret_cast<module_entry*>(response->modules), capacity);
+        total = kernel_modules(
+            reinterpret_cast<module_entry*>(response->modules), capacity,
+            request->flags);
     } else {
         process_ref process;
         if (!process_open(request->pid, &process)) {
             return fail(output_length, DRVLITE_ERR_NOT_FOUND);
         }
-        u32 modules = 0;
         if (process_resolve(&process)) {
-            modules = process_modules(
+            total = process_modules(
                 process.process, process.cr3,
-                reinterpret_cast<module_entry*>(response->modules), capacity);
+                reinterpret_cast<module_entry*>(response->modules), capacity,
+                request->flags);
         }
         process_close(&process);
-        count = modules;
     }
-    response->count = count;
-    response->total = count;
+    const u32 written =
+        total > request->flags
+            ? ((total - request->flags) < capacity ? (total - request->flags)
+                                                   : capacity)
+            : 0;
+    response->count = written;
+    response->total = total;
     response->flags = 0;
-    const u32 need = offset + count * sizeof(drvlite_module_info);
+    const u32 need = offset + written * sizeof(drvlite_module_info);
     return finish(output, output_length, DRVLITE_OP_MODULE_LIST, need,
                   DRVLITE_OK);
 }
